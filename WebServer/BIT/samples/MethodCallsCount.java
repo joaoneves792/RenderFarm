@@ -19,6 +19,11 @@ import java.io.PrintStream;
 import java.util.Enumeration;
 import java.util.concurrent.ConcurrentHashMap;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+
 
 public class MethodCallsCount {
     private static PrintStream out = null;
@@ -41,8 +46,7 @@ public class MethodCallsCount {
                 for (Enumeration e = ci.getRoutines().elements(); e.hasMoreElements(); ) {
                     Routine routine = (Routine) e.nextElement();
 					routine.addBefore("MethodCallsCount", "mcount", new Integer(1));
-
-
+					
 					//We only want to print the information from the renderHandler method
                     if(ci.getClassName().equals("WebServer$RenderHandler")){
                         if (routine.getMethodName().equals("handle")){
@@ -50,7 +54,7 @@ public class MethodCallsCount {
                            routine.addBefore("MethodCallsCount", "initializeMCount", 0);
                         }
                     }
-
+                    
                 }
                 ci.write(argv[1] + System.getProperty("file.separator") + infilename);
             }
@@ -58,8 +62,39 @@ public class MethodCallsCount {
     }
     
     public static synchronized void printMCount(String foo) {
-        System.out.println(counter.get() + " method calls were executed.");
-    }
+//         System.out.println(counter.get() + " method calls were executed.");
+			
+		FileWriter fw = null;
+		BufferedWriter bw = null;
+			
+		try {
+			long threadId = Thread.currentThread().getId();
+			
+			String newLine = "Thread " + threadId + " executed " + counter.get() + " methods.";
+			File file =new File("_instrumentationData.txt");
+			
+			if(!file.exists()){
+				file.createNewFile();
+			}
+			
+			fw = new FileWriter(file, true);
+			bw = new BufferedWriter(fw);
+			
+			bw.write(newLine);
+			
+		} catch(IOException e) {
+			e.printStackTrace();
+			
+		} finally {
+			try {
+				if(bw != null) bw.close();
+				if(fw != null) fw.close();
+				
+			} catch(IOException e) {
+				e.printStackTrace();
+			}
+		}
+	}
     
     public static void mcount(int incr) {
         if(null != counter)
