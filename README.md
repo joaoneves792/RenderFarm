@@ -1,6 +1,18 @@
-## RenderFarm
+# RenderFarm
 
-# WebServer
+## Run on your local machine
+
+Make sure you are running Java 7
+
+make
+
+make run
+
+Test it with:
+
+curl "http://localhost:8000/r.html?f=test05.txt&sc=400&sr=300&wc=400&wr=300&coff=0&roff=0"
+
+## WebServer
 
 Compile raytracer with make
 
@@ -18,7 +30,7 @@ http://localhost:8000/r.html?f=test05.txt&sc=400&sr=300&wc=400&wr=300&coff=0&rof
 
 http://localhost:8000/test
 
-# Instrument code with BIT
+## Instrument code with BIT
 1. Add BIT tool path to classpath:
 `export CLASSPATH="<path-to-project>/WebServer/BIT:<path-to-project>/WebServer/BIT/samples:./"`
 2. Make sure you are running java 7. `java -version`
