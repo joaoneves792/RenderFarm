@@ -17,12 +17,13 @@ import BIT.highBIT.*;
 import java.io.File;
 import java.io.PrintStream;
 import java.util.Enumeration;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 public class MethodCallsCount {
     private static PrintStream out = null;
-    private static int  m_count = 0;
-    
+    public static ConcurrentHashMap<Long, Long> counters = new ConcurrentHashMap<>();
+
     /* main reads in all the files class files present in the input directory,
      * instruments them, and outputs them to the specified output directory.
      */
@@ -56,12 +57,18 @@ public class MethodCallsCount {
     }
     
     public static synchronized void printMCount(String foo) {
-        System.out.println(m_count + " method calls were executed.");
-        m_count = 0;
+        long threadID = Thread.currentThread().getId();
+        System.out.println(counters.get(threadID) + " method calls were executed.");
+        counters.put(threadID, new Long(0));
     }
     
     public static synchronized void mcount(int incr) {
-		m_count++;
+        long threadID = Thread.currentThread().getId();
+        if(counters.containsKey(threadID)){
+            counters.put(threadID, counters.get(threadID)+incr);
+        }else{
+            counters.put(threadID, new Long(incr));
+        }
     }
 }
 

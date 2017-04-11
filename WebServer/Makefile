@@ -1,18 +1,16 @@
-SERVER_CLASSES=WebServer.java
+SERVER_CLASSES= WebServer.java
 
-RAYTRACER_FOLDER= ./raytracer-master/src/raytracer
-RAYTRACER_FOLDER2= ./raytracer-master/src/raytracer/pigments
-RAYTRACER_FOLDER3= ./raytracer-master/src/raytracer/shapes
+INSTRUMENTED_FOLDERS= ./raytracer-master/src/raytracer ./raytracer-master/src/raytracer/pigments ./raytracer-master/src/raytracer/shapes .
 
 JAVA=java
 JC=javac
 CLASSPATH=.:./BIT:./BIT/samples:./raytracer-master/src 
 
-all: warning server bit raytracer instrumentation
-
 .SUFFIXES: .java .class
 .java.class:
-	$(JC) -cp $(CLASSPATH) $*.java 
+	$(JC) -cp $(CLASSPATH) $*.java
+
+all: warning server bit raytracer instrumentation
 
 warning:
 	@echo "+******************************+"
@@ -28,12 +26,11 @@ bit:
 raytracer:
 	make -C ./raytracer-master
 
-instrumentation:
-	$(JAVA) -cp $(CLASSPATH) MethodCallsCount $(RAYTRACER_FOLDER) $(RAYTRACER_FOLDER)
-	$(JAVA) -cp $(CLASSPATH) MethodCallsCount $(RAYTRACER_FOLDER2) $(RAYTRACER_FOLDER2)
-	$(JAVA) -cp $(CLASSPATH) MethodCallsCount $(RAYTRACER_FOLDER3) $(RAYTRACER_FOLDER3)
-	
-	$(JAVA) -cp $(CLASSPATH) MethodCallsCount . .
+.PHONY: $(INSTRUMENTED_FOLDERS)
+instrumentation: $(INSTRUMENTED_FOLDERS)
+
+$(INSTRUMENTED_FOLDERS):
+	$(JAVA) -cp $(CLASSPATH) MethodCallsCount $@ $@
 
 run:
 	$(JAVA) -cp $(CLASSPATH) WebServer
@@ -41,4 +38,4 @@ run:
 clean:
 	rm *.class
 	make clean -C ./BIT/samples
-	cd ./raytracer-master && make clean
+	make clean -C ./raytracer-master
