@@ -22,8 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class MethodCallsCount {
     private static PrintStream out = null;
-    public static ConcurrentHashMap<Long, Long> counters = new ConcurrentHashMap<>();
-    public static ThreadLocal<Integer> counter;
+    private static ThreadLocal<Integer> counter;
 
     /* main reads in all the files class files present in the input directory,
      * instruments them, and outputs them to the specified output directory.
@@ -44,10 +43,11 @@ public class MethodCallsCount {
 					routine.addBefore("MethodCallsCount", "mcount", new Integer(1));
 
 
-					//We only want to print the information at the end of the renderHandler method (after each request for rendering at the server)
+					//We only want to print the information from the renderHandler method
                     if(ci.getClassName().equals("WebServer$RenderHandler")){
                         if (routine.getMethodName().equals("handle")){
                            routine.addAfter("MethodCallsCount", "printMCount", ci.getClassName());
+                           routine.addBefore("MethodCallsCount", "initializeMCount", 0);
                         }
                     }
 
@@ -58,20 +58,15 @@ public class MethodCallsCount {
     }
     
     public static synchronized void printMCount(String foo) {
-        /*long threadID = Thread.currentThread().getId();
-        System.out.println(counters.get(threadID) + " method calls were executed.");
-        counters.put(threadID, new Long(0));*/
         System.out.println(counter.get() + " method calls were executed.");
-        counter.set(0);
     }
     
-    public static synchronized void mcount(int incr) {
-        /*long threadID = Thread.currentThread().getId();
-        if(counters.containsKey(threadID)){
-            counters.put(threadID, counters.get(threadID)+incr);
-        }else{
-            counters.put(threadID, new Long(incr));
-        }*/
+    public static void mcount(int incr) {
+        if(null != counter)
+            counter.set(counter.get()+1);
+    }
+
+    public static void initializeMCount(int value){
         if(null == counter){
             counter = new ThreadLocal<Integer>(){
                 @Override protected Integer initialValue() {
@@ -79,7 +74,7 @@ public class MethodCallsCount {
                 }
             };
         }
-        counter.set(counter.get()+1);
+        counter.set(0);
     }
 }
 

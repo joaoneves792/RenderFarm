@@ -70,11 +70,15 @@ public class WebServer {
                 response = e.getMessage();
                 System.out.println(response);
             }
-            response = "Rendering finished!";
-            t.sendResponseHeaders(200, response.length());
-            OutputStream os = t.getResponseBody();
-            os.write(response.getBytes());
-            os.close();
+            try {
+                response = "Rendering finished!";
+                t.sendResponseHeaders(200, response.length());
+                OutputStream os = t.getResponseBody();
+                os.write(response.getBytes());
+                os.close();
+            }catch (IOException e){
+                //ignore it
+            }
         }
     }
 }
