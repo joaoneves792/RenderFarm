@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MethodCallsCount {
     private static PrintStream out = null;
     public static ConcurrentHashMap<Long, Long> counters = new ConcurrentHashMap<>();
+    public static ThreadLocal<Integer> counter;
 
     /* main reads in all the files class files present in the input directory,
      * instruments them, and outputs them to the specified output directory.
@@ -57,18 +58,28 @@ public class MethodCallsCount {
     }
     
     public static synchronized void printMCount(String foo) {
-        long threadID = Thread.currentThread().getId();
+        /*long threadID = Thread.currentThread().getId();
         System.out.println(counters.get(threadID) + " method calls were executed.");
-        counters.put(threadID, new Long(0));
+        counters.put(threadID, new Long(0));*/
+        System.out.println(counter.get() + " method calls were executed.");
+        counter.set(0);
     }
     
     public static synchronized void mcount(int incr) {
-        long threadID = Thread.currentThread().getId();
+        /*long threadID = Thread.currentThread().getId();
         if(counters.containsKey(threadID)){
             counters.put(threadID, counters.get(threadID)+incr);
         }else{
             counters.put(threadID, new Long(incr));
+        }*/
+        if(null == counter){
+            counter = new ThreadLocal<Integer>(){
+                @Override protected Integer initialValue() {
+                    return 0;
+                }
+            };
         }
+        counter.set(counter.get()+1);
     }
 }
 
