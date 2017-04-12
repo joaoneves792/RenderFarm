@@ -70,7 +70,7 @@ public class WebServer {
                 int roff = Integer.parseInt(arguments.get("roff"));
                 
                 // pass the request arguments to the instrumentation class for the metrics
-                MethodCallsCount.setRequestArguments(sc, sr, wc, wr, coff, roff);
+                MethodCallsCount.setRequestArguments(arguments.get("f"), sc, sr, wc, wr, coff, roff);
                 
                 RayTracer raytracer = new RayTracer(sc, sr, wc, wr, coff, roff);
                 raytracer.readScene(inFile);

@@ -29,6 +29,7 @@ public class MethodCallsCount {
 	private static PrintStream out = null;
 	private static ThreadLocal<Integer> counter;
 	
+	private static ThreadLocal<String> input_file;
 	private static ThreadLocal<Integer> sc;
 	private static ThreadLocal<Integer> sr;
 	private static ThreadLocal<Integer> wc;
@@ -51,7 +52,7 @@ public class MethodCallsCount {
 			
 			if(!metricsFile.exists()) {
 				metricsFile.createNewFile();
-				String newLine = "thread id \tmethods \tsc \tsr \twc \twr \tcoff \troff";
+				String newLine = "thread id \tfile \t\tmethods \tsc \tsr \twc \twr \tcoff \troff";
 				
 				fw = new FileWriter(metricsFile, true);
 				bw = new BufferedWriter(fw);
@@ -107,7 +108,7 @@ public class MethodCallsCount {
 		try {
 			File metricsFile = new File("_instrumentation_data.txt");
 			long threadId = Thread.currentThread().getId();
-			String newLine = threadId + "\t\t\t" + counter.get()
+			String newLine = threadId + "\t\t\t" + input_file.get() + "\t" + counter.get()
 							+ "\t" + sc.get() + "\t" + sr.get()
 							+ "\t" + wc.get() + "\t" + wr.get()
 							+ "\t" + coff.get() + "\t" + roff.get();
@@ -154,6 +155,9 @@ public class MethodCallsCount {
 	}
 	
 	public static void resetRequestArguments(int value) {
+		if(input_file == null){
+			input_file = new ThreadLocal<String>();
+		}
 		if(sc == null){
 			sc = new ThreadLocal<Integer>() {
 				@Override protected Integer initialValue() { return -1; }
@@ -188,7 +192,8 @@ public class MethodCallsCount {
 	}
 	
 	// set the thread local atributes acording to the request
-	public static void setRequestArguments(int scR, int srR, int wcR, int wrR, int coffR, int roffR) {
+	public static void setRequestArguments(String file, int scR, int srR, int wcR, int wrR, int coffR, int roffR) {
+		input_file.set(file);
 		sc.set(scR);
 		sr.set(srR);
 		wc.set(wcR);
