@@ -4,7 +4,10 @@ INSTRUMENTED_FOLDERS= ./raytracer-master/src/raytracer ./raytracer-master/src/ra
 
 JAVA=java
 JC=javac
-CLASSPATH=.:./BIT:./BIT/samples:./raytracer-master/src 
+CLASSPATH=.:./BIT:./BIT/samples:./raytracer-master/src
+
+JAVA_OPTIONS=-XX:-UseSplitVerifier -Duser.language=en -Duser.country=US
+
 
 .SUFFIXES: .java .class
 .java.class:
@@ -34,7 +37,7 @@ $(INSTRUMENTED_FOLDERS):
 
 run:
 # 	$(JAVA) -cp $(CLASSPATH) WebServer
-	$(JAVA) -XX:-UseSplitVerifier -cp $(CLASSPATH) WebServer
+	$(JAVA) $(JAVA_OPTIONS) -cp $(CLASSPATH) WebServer
 	
 clean:
 	rm *.class
