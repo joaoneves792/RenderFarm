@@ -11,6 +11,8 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import raytracer.RayTracer;
 
+import BIT.samples.*;
+
 public class WebServer {
 
     protected static final int THREAD_COUNT = 10;
@@ -36,13 +38,12 @@ public class WebServer {
             os.close();
         }
     }
-
-
-    static class RenderHandler implements HttpHandler {
     
+    static class RenderHandler implements HttpHandler {
+		
         @Override
         public void handle(HttpExchange t) throws IOException {
-        
+			
             String response;
             Map<String, String> arguments = new HashMap<>();
             String query = t.getRequestURI().getQuery();
@@ -68,6 +69,9 @@ public class WebServer {
                 int coff = Integer.parseInt(arguments.get("coff"));
                 int roff = Integer.parseInt(arguments.get("roff"));
                 
+                // pass the request arguments to the instrumentation class for the metrics
+                MethodCallsCount.setRequestArguments(sc, sr, wc, wr, coff, roff);
+                
                 RayTracer raytracer = new RayTracer(sc, sr, wc, wr, coff, roff);
                 raytracer.readScene(inFile);
                 raytracer.draw(outFile);
@@ -83,11 +87,14 @@ public class WebServer {
                 OutputStream os = t.getResponseBody();
                 os.write(response.getBytes());
                 os.close();
+                
             } catch(IOException e) {
                 //ignore it
             }
         }
     }
+    
+    
 }
 
 
