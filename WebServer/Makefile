@@ -17,6 +17,8 @@ all: warning jdk-version-check server bit raytracer instrumentation
 .PHONY: jdk-version-check
 jdk-version-check:
 	@echo -e "$(shell javac -version 2>&1)\njavac 1.8" | sort -ct. -k1,1n -k2,2n -k3,3n
+	@echo -e "$(shell java -version 2>&1|head -1)\njava 1.8" | sort -ct. -k1,1n -k2,2n -k3,3n
+
 
 warning:
 	@echo "+********************************+"
@@ -38,7 +40,7 @@ instrumentation: $(INSTRUMENTED_FOLDERS)
 $(INSTRUMENTED_FOLDERS):
 	$(JAVA) $(JOPTS) -cp $(CLASSPATH) MethodCallsCount $@ $@
 
-run:
+run: jdk-version-check
 	$(JAVA) $(JAVA_OPTIONS) -cp $(CLASSPATH) WebServer
 	
 clean:
