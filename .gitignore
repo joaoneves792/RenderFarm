@@ -16,3 +16,7 @@ hs_err_pid*
 
 #bitmaps
 *.bmp
+
+#metrics file
+_instrumentation_data.txt
+_instrumentationData.txt

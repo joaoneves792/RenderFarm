@@ -33,6 +33,16 @@ public class MethodCallsCount {
      * instruments them, and outputs them to the specified output directory.
      */
     public static void main(String argv[]) {
+    
+		try {
+			File file = new File("_instrumentation_data.txt");
+			if(!file.exists())
+				file.createNewFile();
+			
+		} catch(IOException e) {
+			System.out.println(e.getMessage());
+		}
+		
         File file_in = new File(argv[0]);
         String infilenames[] = file_in.list();
         
@@ -70,17 +80,18 @@ public class MethodCallsCount {
 		try {
 			long threadId = Thread.currentThread().getId();
 			
+			File file = new File("_instrumentation_data.txt");
 			String newLine = "Thread " + threadId + " executed " + counter.get() + " methods.";
-			File file =new File("_instrumentationData.txt");
 			
-			if(!file.exists()){
-				file.createNewFile();
-			}
+// 			if(!file.exists()){
+// 				file.createNewFile();
+// 			}
 			
 			fw = new FileWriter(file, true);
 			bw = new BufferedWriter(fw);
 			
 			bw.write(newLine);
+			bw.newLine();
 			
 		} catch(IOException e) {
 			e.printStackTrace();

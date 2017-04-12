@@ -39,22 +39,27 @@ public class WebServer {
 
 
     static class RenderHandler implements HttpHandler {
+    
         @Override
         public void handle(HttpExchange t) throws IOException {
+        
             String response;
             Map<String, String> arguments = new HashMap<>();
             String query = t.getRequestURI().getQuery();
-            for(String arg : query.split("&")){
+            
+            for(String arg : query.split("&")) {
                 String pair[] = arg.split("=");
-                if (pair.length > 1){
+                if(pair.length > 1) {
                     arguments.put(pair[0], pair[1]);
                 }
             }
-
-            try {
+			
+			System.out.println(arguments);
+			
+			try {
                 File inFile = new File("raytracer-master/"+ arguments.get("f"));
                 File outFile = new File(counter.getAndIncrement() + ".bmp");
-
+                
                 //TODO we are not checking if these actually exist
                 int sc = Integer.parseInt(arguments.get("sc"));
                 int sr = Integer.parseInt(arguments.get("sr"));
@@ -62,21 +67,23 @@ public class WebServer {
                 int wr = Integer.parseInt(arguments.get("wr"));
                 int coff = Integer.parseInt(arguments.get("coff"));
                 int roff = Integer.parseInt(arguments.get("roff"));
-
+                
                 RayTracer raytracer = new RayTracer(sc, sr, wc, wr, coff, roff);
                 raytracer.readScene(inFile);
                 raytracer.draw(outFile);
-            }catch (Exception e){
+                
+            } catch(Exception e) {
                 response = e.getMessage();
                 System.out.println(response);
             }
+            
             try {
                 response = "Rendering finished!";
                 t.sendResponseHeaders(200, response.length());
                 OutputStream os = t.getResponseBody();
                 os.write(response.getBytes());
                 os.close();
-            }catch (IOException e){
+            } catch(IOException e) {
                 //ignore it
             }
         }

@@ -13,10 +13,10 @@ CLASSPATH=.:./BIT:./BIT/samples:./raytracer-master/src
 all: warning server bit raytracer instrumentation
 
 warning:
-	@echo "+******************************+"
-	@echo "|MAKE SURE YOU ARE USING JAVA 7|"
-	@echo "|To run the project do make run|"
-	@echo "+******************************+"
+	@echo "+********************************+"
+	@echo "| MAKE SURE YOU ARE USING JAVA 7 |"
+	@echo "| To run the project do make run |"
+	@echo "+********************************+"
 
 server: $(SERVER_CLASSES:.java=.class)
 
@@ -33,8 +33,9 @@ $(INSTRUMENTED_FOLDERS):
 	$(JAVA) -cp $(CLASSPATH) MethodCallsCount $@ $@
 
 run:
-	$(JAVA) -cp $(CLASSPATH) WebServer
-
+# 	$(JAVA) -cp $(CLASSPATH) WebServer
+	$(JAVA) -XX:-UseSplitVerifier -cp $(CLASSPATH) WebServer
+	
 clean:
 	rm *.class
 	make clean -C ./BIT/samples
