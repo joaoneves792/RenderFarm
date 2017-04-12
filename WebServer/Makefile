@@ -5,7 +5,6 @@ INSTRUMENTED_FOLDERS= ./raytracer-master/src/raytracer ./raytracer-master/src/ra
 JAVA=java
 JC=javac
 CLASSPATH=.:./BIT:./BIT/samples:./raytracer-master/src
-
 JAVA_OPTIONS=-XX:-UseSplitVerifier -Duser.language=en -Duser.country=US
 
 
@@ -13,7 +12,11 @@ JAVA_OPTIONS=-XX:-UseSplitVerifier -Duser.language=en -Duser.country=US
 .java.class:
 	$(JC) -cp $(CLASSPATH) $*.java
 
-all: warning server bit raytracer instrumentation
+all: warning jdk-version-check server bit raytracer instrumentation
+
+.PHONY: jdk-version-check
+jdk-version-check:
+	@echo -e "$(shell javac -version 2>&1)\njavac 1.8" | sort -ct. -k1,1n -k2,2n -k3,3n
 
 warning:
 	@echo "+********************************+"
@@ -33,10 +36,9 @@ raytracer:
 instrumentation: $(INSTRUMENTED_FOLDERS)
 
 $(INSTRUMENTED_FOLDERS):
-	$(JAVA) -cp $(CLASSPATH) MethodCallsCount $@ $@
+	$(JAVA) $(JOPTS) -cp $(CLASSPATH) MethodCallsCount $@ $@
 
 run:
-# 	$(JAVA) -cp $(CLASSPATH) WebServer
 	$(JAVA) $(JAVA_OPTIONS) -cp $(CLASSPATH) WebServer
 	
 clean:
