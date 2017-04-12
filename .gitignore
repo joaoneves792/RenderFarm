@@ -20,3 +20,6 @@ hs_err_pid*
 #metrics file
 _instrumentation_data.txt
 _instrumentationData.txt
+
+#idea
+workspace.xml
