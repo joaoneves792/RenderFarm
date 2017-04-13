@@ -40,7 +40,9 @@ public class MethodCallsCount {
 	private static ThreadLocal<Integer> wr;
 	private static ThreadLocal<Integer> coff;
 	private static ThreadLocal<Integer> roff;
-	
+	private static ThreadLocal<Long> startTime;
+	private static ThreadLocal<Long> totalDuration;
+
 	private static FileWriter fw = null;
 	private static BufferedWriter bw = null;
 	
@@ -52,14 +54,13 @@ public class MethodCallsCount {
 	* instruments them, and outputs them to the specified output directory.
 	*/
 	public static void main(String argv[]) {
-		
 		// create file for the storing of metrics if it does not exist
 		try {
 			File metricsFile = new File("_instrumentation_data.txt");
 			
 			if(!metricsFile.exists()) {
 				metricsFile.createNewFile();
-				String newLine = "thread id \tdatetime \t\t\tfile \t\tsc \tsr \twc \twr \tcoff \troff \tmethods";
+				String newLine = "thread id \tdatetime \t\t\tfile \t\tsc \tsr \twc \twr \tcoff \troff \tmethods \tduration";
 				
 				fw = new FileWriter(metricsFile, true);
 				bw = new BufferedWriter(fw);
@@ -99,9 +100,11 @@ public class MethodCallsCount {
 					//We only want to print the information from the renderHandler method
 					if (ci.getClassName().equals("WebServer$RenderHandler")) {
 						if (routine.getMethodName().equals("handle")) {
-						routine.addAfter("MethodCallsCount", "printMCount", ci.getClassName());
-						routine.addBefore("MethodCallsCount", "initializeMCount", 0);
-						routine.addBefore("MethodCallsCount", "resetRequestArguments", 0);
+							routine.addAfter("MethodCallsCount", "endTimer", 0);
+							routine.addAfter("MethodCallsCount", "printMCount", ci.getClassName());
+							routine.addBefore("MethodCallsCount", "initializeMCount", 0);
+							routine.addBefore("MethodCallsCount", "resetRequestArguments", 0);
+							routine.addBefore("MethodCallsCount", "startTimer", 0);
 						}
 					}
 				}
@@ -120,8 +123,9 @@ public class MethodCallsCount {
 							+ "\t" + sc.get() + "\t" + sr.get()
 							+ "\t" + wc.get() + "\t" + wr.get()
 							+ "\t" + coff.get() + "\t" + roff.get()
-							+ "\t" + counter.get();
-			
+							+ "\t" + counter.get()
+							+ "\t" + totalDuration.get();
+
 			fw = new FileWriter(metricsFile, true);
 			bw = new BufferedWriter(fw);
 			
@@ -146,7 +150,35 @@ public class MethodCallsCount {
 	public static int getMethodsCounter() {
 		return counter.get();
 	}
-	
+
+	public static void startTimer(int ignoreThis) {
+		if(startTime == null) {
+			startTime = new ThreadLocal<Long>() {
+				@Override protected Long initialValue() {
+					return System.currentTimeMillis();
+				}
+			};
+		}
+		startTime.set(System.currentTimeMillis());
+	}
+
+	public static void endTimer(int ignoreThis) {
+		if(startTime == null) {
+			totalDuration.set(0L);
+			return;
+		}
+
+		if(totalDuration == null) {
+			totalDuration = new ThreadLocal<Long>() {
+				@Override protected Long initialValue() {
+					return System.currentTimeMillis() - startTime.get();
+				}
+			};
+		}
+		totalDuration.set(System.currentTimeMillis() - startTime.get());
+
+	}
+
 	public static void mcount(int incr) {
 		if(null != counter)
 			counter.set(counter.get()+1);
