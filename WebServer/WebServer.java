@@ -20,6 +20,10 @@ public class WebServer {
     protected static AtomicInteger counter = new AtomicInteger(0);
 
     public static void main(String[] args) throws Exception {
+    
+    	File outputImgDir = new File("rendered-images");
+		outputImgDir.mkdir();
+		
         HttpServer server = HttpServer.create(new InetSocketAddress(8000), 0);
         server.createContext("/test", new TestHandler());
         server.createContext("/r.html", new RenderHandler());
@@ -58,8 +62,8 @@ public class WebServer {
 			System.out.println(arguments);
 			
 			try {
-                File inFile = new File("raytracer-master/"+ arguments.get("f"));
-                File outFile = new File(counter.getAndIncrement() + ".bmp");
+                File inFile = new File("raytracer-master/" + arguments.get("f"));
+                File outFile = new File("rendered-images/" + counter.getAndIncrement() + ".bmp");
                 
                 //TODO we are not checking if these actually exist
                 int sc = Integer.parseInt(arguments.get("sc"));

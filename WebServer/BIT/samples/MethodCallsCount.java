@@ -16,13 +16,17 @@ import BIT.highBIT.*;
 
 import java.io.File;
 import java.io.PrintStream;
-import java.util.Enumeration;
-import java.util.concurrent.ConcurrentHashMap;
-
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+
+import java.util.Enumeration;
+import java.util.concurrent.ConcurrentHashMap;
+
+import java.util.Date;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 
 
 public class MethodCallsCount {
@@ -39,6 +43,9 @@ public class MethodCallsCount {
 	
 	private static FileWriter fw = null;
 	private static BufferedWriter bw = null;
+	
+	private static final DateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
+
 
 
 	/* main reads in all the files class files present in the input directory,
@@ -52,7 +59,7 @@ public class MethodCallsCount {
 			
 			if(!metricsFile.exists()) {
 				metricsFile.createNewFile();
-				String newLine = "thread id \tfile \t\tmethods \tsc \tsr \twc \twr \tcoff \troff";
+				String newLine = "thread id \tdatetime \t\t\tfile \t\tsc \tsr \twc \twr \tcoff \troff \tmethods";
 				
 				fw = new FileWriter(metricsFile, true);
 				bw = new BufferedWriter(fw);
@@ -108,10 +115,12 @@ public class MethodCallsCount {
 		try {
 			File metricsFile = new File("_instrumentation_data.txt");
 			long threadId = Thread.currentThread().getId();
-			String newLine = threadId + "\t\t\t" + input_file.get() + "\t" + counter.get()
+			String newLine = threadId + "\t\t\t" + sdf.format(new Date())
+							+ "\t" + input_file.get()
 							+ "\t" + sc.get() + "\t" + sr.get()
 							+ "\t" + wc.get() + "\t" + wr.get()
-							+ "\t" + coff.get() + "\t" + roff.get();
+							+ "\t" + coff.get() + "\t" + roff.get()
+							+ "\t" + counter.get();
 			
 			fw = new FileWriter(metricsFile, true);
 			bw = new BufferedWriter(fw);
