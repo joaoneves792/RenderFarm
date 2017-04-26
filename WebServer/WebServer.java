@@ -1,6 +1,4 @@
-import java.io.File;
-import java.io.IOException;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.Map;
@@ -79,19 +77,25 @@ public class WebServer {
                 RayTracer raytracer = new RayTracer(sc, sr, wc, wr, coff, roff);
                 raytracer.readScene(inFile);
                 raytracer.draw(outFile);
-                
-            } catch(Exception e) {
+
+                FileInputStream fis = new FileInputStream(outFile);
+
+                byte[] bytes = new byte[(int)outFile.length()];
+                BufferedInputStream bufferedInputStream = new BufferedInputStream(fis);
+                bufferedInputStream.read(bytes, 0, bytes.length);
+
+                t.sendResponseHeaders(200, outFile.length());
+                OutputStream os = t.getResponseBody();
+                os.write(bytes);
+                os.close();
+
+            } catch(InterruptedException e) {
                 response = e.getMessage();
                 System.out.println(response);
-            }
-            
-            try {
-                response = "Rendering finished!";
                 t.sendResponseHeaders(200, response.length());
                 OutputStream os = t.getResponseBody();
                 os.write(response.getBytes());
                 os.close();
-                
             } catch(IOException e) {
                 //ignore it
             }
