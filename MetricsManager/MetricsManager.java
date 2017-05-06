@@ -2,12 +2,13 @@ import com.amazonaws.regions.Regions;
 import com.amazonaws.services.cloudwatch.model.Metric;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
-import com.amazonaws.services.dynamodbv2.document.DynamoDB;
-import com.amazonaws.services.dynamodbv2.document.Item;
-import com.amazonaws.services.dynamodbv2.document.Table;
+import com.amazonaws.services.dynamodbv2.document.*;
+import com.amazonaws.services.dynamodbv2.document.spec.QuerySpec;
 import com.amazonaws.services.dynamodbv2.model.*;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.UUID;
 
 public class MetricsManager {
@@ -49,10 +50,37 @@ public class MetricsManager {
         }
     }
 
-    static public void getMetrics() {
+    static public void getMetrics(String fileName) {
         // 1. Should we only check metrics for the same file?
         // 2. If no metrics exists for current file, do we check the other files?
-        
+        HashMap<String, String> nameMap = new HashMap<String, String>();
+        HashMap<String, Object> valueMap = new HashMap<String, Object>();
+        nameMap.put("#fN", "fileName");
+        valueMap.put(":fileName", fileName);
+
+        QuerySpec querySpec = new QuerySpec()
+                .withKeyConditionExpression("#fn = :fileName")
+                .withNameMap(nameMap)
+                .withValueMap(valueMap);
+
+        ItemCollection<QueryOutcome> items = null;
+        Iterator<Item> iterator = null;
+        Item item = null;
+
+        try {
+            items = metricsTable.query(querySpec);
+
+            iterator = items.iterator();
+            while (iterator.hasNext()) {
+                item = iterator.next();
+                System.out.println(item.getNumber("wr") + ": " + item.getString("wc"));
+            }
+
+        }
+        catch (Exception e) {
+            System.err.println("Unable to query movies from 1985");
+            System.err.println(e.getMessage());
+        }
     }
 
     static public void saveMetrics(String fileName, int sc, int sr, int wc, int wr, int coff, int roff, int mc) {
@@ -81,7 +109,7 @@ public class MetricsManager {
         MetricsManager.init();
         try {
             metricsTable.waitForActive();
-            MetricsManager.saveMetrics("file1", 1000, 1000, 200, 200, 0,0, 10100);
+            MetricsManager.getMetrics("file1");
         }
         catch(Exception e) {
             System.out.println(e);
