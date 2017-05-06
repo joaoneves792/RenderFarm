@@ -4,6 +4,9 @@ import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.amazonaws.services.dynamodbv2.document.*;
 import com.amazonaws.services.dynamodbv2.document.spec.QuerySpec;
+import com.amazonaws.services.dynamodbv2.document.spec.ScanSpec;
+import com.amazonaws.services.dynamodbv2.document.utils.NameMap;
+import com.amazonaws.services.dynamodbv2.document.utils.ValueMap;
 import com.amazonaws.services.dynamodbv2.model.*;
 
 import java.util.Arrays;
@@ -53,32 +56,27 @@ public class MetricsManager {
     static public void getMetrics(String fileName) {
         // 1. Should we only check metrics for the same file?
         // 2. If no metrics exists for current file, do we check the other files?
-        HashMap<String, String> nameMap = new HashMap<String, String>();
-        HashMap<String, Object> valueMap = new HashMap<String, Object>();
-        nameMap.put("#fN", "fileName");
-        valueMap.put(":fileName", fileName);
 
-        QuerySpec querySpec = new QuerySpec()
-                .withKeyConditionExpression("#fn = :fileName")
-                .withNameMap(nameMap)
-                .withValueMap(valueMap);
-
-        ItemCollection<QueryOutcome> items = null;
-        Iterator<Item> iterator = null;
-        Item item = null;
-
+        // TODO: Add parameters to query.
+        ScanSpec scanSpec = new ScanSpec()
+                .withFilterExpression("#fN = :fileName")
+                .withNameMap(new NameMap().with("#fN", "fileName"))
+                .withValueMap(
+                        new ValueMap().withString(":fileName", "file1")
+                );
         try {
-            items = metricsTable.query(querySpec);
+            ItemCollection<ScanOutcome> items = metricsTable.scan(scanSpec);
 
-            iterator = items.iterator();
-            while (iterator.hasNext()) {
-                item = iterator.next();
-                System.out.println(item.getNumber("wr") + ": " + item.getString("wc"));
+            Iterator<Item> iter = items.iterator();
+            while (iter.hasNext()) {
+                Item item = iter.next();
+                // TODO: Return the method count or null.
+                System.out.println(item.toString());
             }
-
         }
+
         catch (Exception e) {
-            System.err.println("Unable to query movies from 1985");
+            System.err.println("Unable to scan the table:");
             System.err.println(e.getMessage());
         }
     }
