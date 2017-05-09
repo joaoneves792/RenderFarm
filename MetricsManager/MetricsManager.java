@@ -3,16 +3,11 @@ import com.amazonaws.services.cloudwatch.model.Metric;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.amazonaws.services.dynamodbv2.document.*;
-import com.amazonaws.services.dynamodbv2.document.spec.QuerySpec;
 import com.amazonaws.services.dynamodbv2.document.spec.ScanSpec;
-import com.amazonaws.services.dynamodbv2.document.utils.NameMap;
 import com.amazonaws.services.dynamodbv2.document.utils.ValueMap;
 import com.amazonaws.services.dynamodbv2.model.*;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.UUID;
+import java.util.*;
 
 public class MetricsManager {
     private static DynamoDB dynamoDB;
@@ -21,7 +16,6 @@ public class MetricsManager {
     public static void init() {
         // This requires a "credentials" files in your ~/.aws folder
         // containing aws-access-id and aws-secret
-
         AmazonDynamoDB client = AmazonDynamoDBClientBuilder
                 .standard()
                 .withRegion(Regions.EU_WEST_1)
@@ -53,25 +47,33 @@ public class MetricsManager {
         }
     }
 
-    static public void getMetrics(String fileName) {
+    static public int getMetrics(int sc, int sr, int wc, int wr, int coff, int roff) {
         // 1. Should we only check metrics for the same file?
         // 2. If no metrics exists for current file, do we check the other files?
-
-        // TODO: Add parameters to query.
         ScanSpec scanSpec = new ScanSpec()
-                .withFilterExpression("#fN = :fileName")
-                .withNameMap(new NameMap().with("#fN", "fileName"))
+                .withFilterExpression("" +
+                        "sc = :sc and " +
+                        "sr = :sr and " +
+                        "wc = :wc and " +
+                        "wr = :wr and " +
+                        "coff = :coff and " +
+                        "roff = :roff"
+                        )
                 .withValueMap(
-                        new ValueMap().withString(":fileName", "file1")
+                        new ValueMap()
+                                .withInt(":sc", sc)
+                                .withInt(":sr", sr)
+                                .withInt(":wc", wc)
+                                .withInt(":wr", wr)
+                                .withInt(":coff", coff)
+                                .withInt(":roff", roff)
                 );
         try {
             ItemCollection<ScanOutcome> items = metricsTable.scan(scanSpec);
-
             Iterator<Item> iter = items.iterator();
-            while (iter.hasNext()) {
+            if (iter.hasNext()) {
                 Item item = iter.next();
-                // TODO: Return the method count or null.
-                System.out.println(item.toString());
+                return item.getInt("mc");
             }
         }
 
@@ -79,9 +81,11 @@ public class MetricsManager {
             System.err.println("Unable to scan the table:");
             System.err.println(e.getMessage());
         }
+        return -1;
     }
 
     static public void saveMetrics(String fileName, int sc, int sr, int wc, int wr, int coff, int roff, int mc) {
+        int existingMetrics = MetricsManager.getMetrics(sc, sr, wc, wr, coff, roff);
         String id = UUID.randomUUID().toString();
         Item item = new Item();
         item.withPrimaryKey("id", id);
@@ -103,16 +107,15 @@ public class MetricsManager {
     public static void main(String[] args) {
         // This is just for testing.
         // Will remove when done.
-
         MetricsManager.init();
         try {
             metricsTable.waitForActive();
-            MetricsManager.getMetrics("file1");
+            int methodCount = MetricsManager.getMetrics(1000, 1000, 200, 250, 0,0);
+            System.out.println(methodCount);
         }
         catch(Exception e) {
             System.out.println(e);
         }
-
     }
 
 }
