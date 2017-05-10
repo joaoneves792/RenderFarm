@@ -1,12 +1,10 @@
 import com.amazonaws.regions.Regions;
-import com.amazonaws.services.cloudwatch.model.Metric;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.amazonaws.services.dynamodbv2.document.*;
 import com.amazonaws.services.dynamodbv2.document.spec.ScanSpec;
 import com.amazonaws.services.dynamodbv2.document.utils.ValueMap;
 import com.amazonaws.services.dynamodbv2.model.*;
-
 import java.util.*;
 
 public class MetricsManager {
@@ -25,7 +23,7 @@ public class MetricsManager {
         String tableName = "metrics";
 
         try {
-            // Chech if table exists
+            // Check if table exists
             Table table = dynamoDB.getTable(tableName);
             table.describe();
             metricsTable = table;

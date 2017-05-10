@@ -25,7 +25,6 @@ public class LoadBalancer {
     private static final int WS_PORT = 8000;
     private static final String REGION = "eu-west-1";
     private static final String AUTOSCALING_GROUP_NAME = " RENDERFARM_ASG";
-
     private static int _roundRobin = 0;
 
     private static AWSCredentials _credentials;
@@ -81,11 +80,7 @@ public class LoadBalancer {
         _credentials = loadCredentials();
         _IPs = getGroupIPs();
 
-
         System.out.println("Available hosts:");
-        for(String ip : _IPs){
-            System.out.println(ip);
-        }
 
         HttpServer server = HttpServer.create(new InetSocketAddress(LB_PORT), 0);
         server.createContext(RENDER_RESOURCE, new RenderHandler());
@@ -104,9 +99,14 @@ public class LoadBalancer {
 
             String charset = java.nio.charset.StandardCharsets.UTF_8.name();
             String query = t.getRequestURI().getQuery();
+
+            Job job = new Job("file1", 1000, 1000, 300, 300, 0, 0);
+            String ipForJob = Scheduler.getIpForJob(job);
+
             HttpURLConnection connection = (HttpURLConnection)new URL("http", host, WS_PORT, RENDER_RESOURCE+"?"+query).openConnection();
             connection.setRequestProperty("Accept-Charset", charset);
-		    try{
+		    try {
+		        Scheduler.scheduleJob(job, ipForJob);
 
                 InputStream response = connection.getInputStream();
                 ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -119,6 +119,9 @@ public class LoadBalancer {
                 OutputStream os = t.getResponseBody();
                 outputStream.writeTo(os);
                 os.close();
+
+                Scheduler.finishJob(job, ipForJob);
+
 
             } catch(IOException e) {
 		        e.printStackTrace();
