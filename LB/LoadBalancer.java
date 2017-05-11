@@ -26,16 +26,16 @@ public class LoadBalancer {
         public void handle(HttpExchange t) throws IOException {
 
             //The IP of the host to which we want to redirect the request
-            String host = Scheduler.getIpForJob();
+            String ipForJob = Scheduler.getIpForJob();
+
+            // Create a new job. Add to scheduler
+            Job job = new Job("file1", 1000, 1000, 300, 300, 0, 0);
+            Scheduler.scheduleJob(job, ipForJob);
 
             String charset = java.nio.charset.StandardCharsets.UTF_8.name();
             String query = t.getRequestURI().getQuery();
 
-            Job job = new Job("file1", 1000, 1000, 300, 300, 0, 0);
-            String ipForJob = Scheduler.getIpForJob();
-            Scheduler.scheduleJob(job, ipForJob);
-
-            HttpURLConnection connection = (HttpURLConnection) new URL("http", host, WS_PORT, RENDER_RESOURCE+"?"+query).openConnection();
+            HttpURLConnection connection = (HttpURLConnection) new URL("http", ipForJob, WS_PORT, RENDER_RESOURCE+"?"+query).openConnection();
             connection.setRequestProperty("Accept-Charset", charset);
 		    try {
 		        System.out.println("Sent job to: " + ipForJob);
@@ -59,6 +59,7 @@ public class LoadBalancer {
                 os.close();
             }
 
+            // Job finished. Update scheduler.
             Scheduler.finishJob(job, ipForJob);
 
         }

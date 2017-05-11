@@ -17,11 +17,11 @@ public class Scheduler {
     private static final String REGION = "eu-west-1";
     private static final String AUTOSCALING_GROUP_NAME = " RENDERFARM_ASG";
     private static AWSCredentials _credentials;
+    private static final int THREAD_COUNT_ON_INSTANCES = 2;
 
-    private static AWSCredentials loadCredentials() {
-        AWSCredentials credentials = null;
+    private static void loadCredentials() {
         try {
-            credentials = new ProfileCredentialsProvider().getCredentials();
+            _credentials = new ProfileCredentialsProvider().getCredentials();
         } catch (Exception e) {
             throw new AmazonClientException(
                     "Cannot load the credentials from the credential profiles file. " +
@@ -29,7 +29,6 @@ public class Scheduler {
                             "location (~/.aws/credentials), and is in valid format.",
                     e);
         }
-        return credentials;
     }
 
     private static List<String> getGroupIPs() {
@@ -72,7 +71,7 @@ public class Scheduler {
     }
 
     public static void init() {
-        _credentials = loadCredentials();
+        loadCredentials();
 
         // Populate our instance map with the ips to the instances in our auto-scaling group.
         List<String> ips = getGroupIPs();
@@ -117,7 +116,7 @@ public class Scheduler {
 
         for(Map.Entry<String, HashMap<String, Job>> entry : instanceJobMap.entrySet()) {
             HashMap<String, Job> jobsForInstance = entry.getValue();
-            if (jobsForInstance.size() < 2)
+            if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES)
                 return false;
         }
         return true;
@@ -129,7 +128,7 @@ public class Scheduler {
             String ip = ipJobsKeyPair.getKey();
             HashMap<String, Job> jobsForInstance = ipJobsKeyPair.getValue();
 
-            if (jobsForInstance.size() < 2) {
+            if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES) {
                 return ip;
             }
         }
