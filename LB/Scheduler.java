@@ -6,7 +6,7 @@ import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.services.autoscaling.AmazonAutoScaling;
 import com.amazonaws.services.autoscaling.AmazonAutoScalingClientBuilder;
 import com.amazonaws.services.autoscaling.model.AutoScalingInstanceDetails;
-import com.amazonaws.services.autoscaling.model.PutLifecycleHookRequest;
+import com.amazonaws.services.autoscaling.model.ScheduledUpdateGroupAction;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
 import com.amazonaws.services.ec2.model.*;
@@ -73,26 +73,20 @@ public class Scheduler {
 
     public static void init() {
         _credentials = loadCredentials();
+
+        // Populate our instance map with the ips to the instances in our auto-scaling group.
         List<String> ips = getGroupIPs();
         for (String ip : ips) {
-            instanceJobMap.put("ip", new HashMap<String, Job>());
+            instanceJobMap.put(ip, new HashMap<String, Job>());
         }
-
-        AmazonAutoScaling amazonAutoScalingClient = AmazonAutoScalingClientBuilder
-                .standard()
-                .withRegion(REGION)
-                .withCredentials(new AWSStaticCredentialsProvider(_credentials))
-                .build();
-
-        PutLifecycleHookRequest request = new PutLifecycleHookRequest()
-                .withAutoScalingGroupName(AUTOSCALING_GROUP_NAME)
-                .withLifecycleHookName("on-termination")
-                .withLifecycleTransition("autoscaling:EC2_INSTANCE_TERMINATING");
-        // TODO: Find out how to attach lambda function to remove instance.
 
     }
 
     public static String scheduleJob(Job newJob, String instanceIp) {
+        if (_credentials == null) {
+            throw new Error("Please call init() before attempting to schedule jobs.");
+        }
+
         String jobId = newJob.getJobId();
         newJob.start();
 
@@ -107,22 +101,29 @@ public class Scheduler {
     }
 
     public static void finishJob(Job job, String instanceIp) {
+        if (_credentials == null) {
+            throw new Error("Please call init() before attempting to schedule jobs.");
+        }
+
         job.stop();
         HashMap<String, Job> jobsForInstance = instanceJobMap.get(instanceIp);
         jobsForInstance.remove(job.getJobId());
     }
 
-    public static boolean shouldLaunchNewIstance() {
+    public static boolean allInstancesAreFull() {
+        if (_credentials == null) {
+            throw new Error("Please call init() before attempting to schedule jobs.");
+        }
+
         for(Map.Entry<String, HashMap<String, Job>> entry : instanceJobMap.entrySet()) {
-            String key = entry.getKey();
             HashMap<String, Job> jobsForInstance = entry.getValue();
-            if (key.length() < 2)
+            if (jobsForInstance.size() < 2)
                 return false;
         }
         return true;
     }
 
-    public static String getIpForJob(Job newJob) {
+    public static String getIpForJob() {
         // Assuming max two jobs pr server, return server ip with less than two jobs.
         for(Map.Entry<String, HashMap<String, Job>> ipJobsKeyPair : instanceJobMap.entrySet()) {
             String ip = ipJobsKeyPair.getKey();
@@ -140,10 +141,25 @@ public class Scheduler {
     }
 
     public static void main(String[] args) {
-        Job job = new Job("file1", 1000,1000, 200, 200, 0,0);
-        String jobId = job.getJobId();
-        Scheduler.scheduleJob(job, "123");
-        Scheduler.finishJob(job, "123");
-        System.out.println(Scheduler.instanceJobMap.get("123").get(jobId));
+        Scheduler.init();
+        Job job1 = new Job("file1", 1000, 1000, 200, 200, 0,0);
+        Job job2 = new Job("file1", 1000, 1000, 200, 200, 0,0);
+        Job job3 = new Job("file1", 1000, 1000, 200, 200, 0,0);
+        Job job4= new Job("file1", 1000, 1000, 200, 200, 0,0);
+
+        String ipForJob1 = Scheduler.getIpForJob();
+        Scheduler.scheduleJob(job1, ipForJob1);
+
+        String ipForJob2 = Scheduler.getIpForJob();
+        Scheduler.scheduleJob(job2, ipForJob2);
+
+        String ipForJob3 = Scheduler.getIpForJob();
+        Scheduler.scheduleJob(job3, ipForJob3);
+
+        String ipForJob4 = Scheduler.getIpForJob();
+        Scheduler.scheduleJob(job4, ipForJob4);
+
+
+        System.out.println(Scheduler.allInstancesAreFull());
     }
 }
