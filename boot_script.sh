@@ -1,6 +1,9 @@
 #!/bin/bash
 cd /home/ec2-user/RenderFarm
-git stash && git pull
+sudo -u ec2-user git stash
+sudo -u ec2-user git pull
 cd WebServer
-make
-make run
+make clean
+sudo -u ec2-user make
+sudo -u ec2-user make run
+
