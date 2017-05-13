@@ -2,7 +2,7 @@ BIT_CLASSES=MethodCallsCount.java
 
 JAVA=java
 JC=javac
-CLASSPATH=.:..
+CLASSPATH=.:..:../../../MetricsManager/
 
 .SUFFIXES: .java .class
 .java.class:
