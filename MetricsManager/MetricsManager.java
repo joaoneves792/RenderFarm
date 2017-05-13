@@ -5,6 +5,7 @@ import com.amazonaws.services.dynamodbv2.document.*;
 import com.amazonaws.services.dynamodbv2.document.spec.ScanSpec;
 import com.amazonaws.services.dynamodbv2.document.utils.ValueMap;
 import com.amazonaws.services.dynamodbv2.model.*;
+
 import java.util.*;
 
 public class MetricsManager {
@@ -43,13 +44,18 @@ public class MetricsManager {
                 new ProvisionedThroughput(10L, 10L)
             );
         }
+        try {
+            metricsTable.waitForActive();
+        }catch (InterruptedException e){
+            Thread.currentThread().interrupt();
+        }
     }
 
-    static public int getMetrics(int sc, int sr, int wc, int wr, int coff, int roff) {
+    static public int getMetrics(String filename, int sc, int sr, int wc, int wr, int coff, int roff) {
         // 1. Should we only check metrics for the same file?
         // 2. If no metrics exists for current file, do we check the other files?
         ScanSpec scanSpec = new ScanSpec()
-                .withFilterExpression("" +
+                .withFilterExpression("fileName = :fileName and " +
                         "sc = :sc and " +
                         "sr = :sr and " +
                         "wc = :wc and " +
@@ -59,6 +65,7 @@ public class MetricsManager {
                         )
                 .withValueMap(
                         new ValueMap()
+                                .withString(":fileName", filename)
                                 .withInt(":sc", sc)
                                 .withInt(":sr", sr)
                                 .withInt(":wc", wc)
@@ -82,8 +89,16 @@ public class MetricsManager {
         return -1;
     }
 
+    //No need to synchronize, Table is ThreadSafe
     static public void saveMetrics(String fileName, int sc, int sr, int wc, int wr, int coff, int roff, int mc) {
-        int existingMetrics = MetricsManager.getMetrics(sc, sr, wc, wr, coff, roff);
+
+        //Check for existing metrics
+        //TODO dont just eliminate duplicates, but also similar results
+        int existingMetrics = MetricsManager.getMetrics(fileName, sc, sr, wc, wr, coff, roff);
+        if(existingMetrics > -1){
+            return;
+        }
+
         String id = UUID.randomUUID().toString();
         Item item = new Item();
         item.withPrimaryKey("id", id);
@@ -107,8 +122,7 @@ public class MetricsManager {
         // Will remove when done.
         MetricsManager.init();
         try {
-            metricsTable.waitForActive();
-            int methodCount = MetricsManager.getMetrics(1000, 1000, 200, 250, 0,0);
+            int methodCount = MetricsManager.getMetrics("test01.txt",1000, 1000, 200, 250, 0,0);
             System.out.println(methodCount);
         }
         catch(Exception e) {

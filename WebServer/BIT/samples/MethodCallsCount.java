@@ -49,6 +49,7 @@ public class MethodCallsCount {
 	private static final DateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
 
 
+	private static MetricsManager metricsManager;
 
 	/* main reads in all the files class files present in the input directory,
 	* instruments them, and outputs them to the specified output directory.
@@ -131,7 +132,10 @@ public class MethodCallsCount {
 			
 			bw.write(newLine);
 			bw.newLine();
-			
+
+			/*Save the metrics*/
+			metricsManager.saveMetrics(input_file.get(), sc.get(), sr.get(), wc.get(), wr.get(), coff.get(), roff.get(), counter.get());
+
 		} catch(IOException e) {
 			System.out.println(e.getMessage());
 			
@@ -233,7 +237,7 @@ public class MethodCallsCount {
 	}
 	
 	// set the thread local atributes acording to the request
-	public static void setRequestArguments(String file, int scR, int srR, int wcR, int wrR, int coffR, int roffR) {
+	public static void setRequestArguments(String file, int scR, int srR, int wcR, int wrR, int coffR, int roffR, MetricsManager metrics) {
 		input_file.set(file);
 		sc.set(scR);
 		sr.set(srR);
@@ -241,6 +245,8 @@ public class MethodCallsCount {
 		wr.set(wrR);
 		coff.set(coffR);
 		roff.set(roffR);
+
+		metricsManager = metrics;
 	}
 	
 }

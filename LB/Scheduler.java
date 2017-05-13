@@ -19,6 +19,8 @@ public class Scheduler {
     private static AWSCredentials _credentials;
     private static final int THREAD_COUNT_ON_INSTANCES = 2;
 
+    private static MetricsManager metricsManager;
+
     private static void loadCredentials() {
         try {
             _credentials = new ProfileCredentialsProvider().getCredentials();
@@ -79,6 +81,9 @@ public class Scheduler {
             instanceJobMap.put(ip, new HashMap<String, Job>());
         }
 
+        metricsManager = new MetricsManager();
+        metricsManager.init();
+
     }
 
     public static String scheduleJob(Job newJob, String instanceIp) {
@@ -122,7 +127,12 @@ public class Scheduler {
         return true;
     }
 
-    public static String getIpForJob() {
+    public static String getIpForJob(Job job) {
+
+        //Get the estimated cost for running this job
+        double cost = job.estimateCost(metricsManager);
+        System.out.println("Estimated cost: " + cost);
+
         // Assuming max two jobs pr server, return server ip with less than two jobs.
         for(Map.Entry<String, HashMap<String, Job>> ipJobsKeyPair : instanceJobMap.entrySet()) {
             String ip = ipJobsKeyPair.getKey();
@@ -146,16 +156,16 @@ public class Scheduler {
         Job job3 = new Job("file1", 1000, 1000, 200, 200, 0,0);
         Job job4= new Job("file1", 1000, 1000, 200, 200, 0,0);
 
-        String ipForJob1 = Scheduler.getIpForJob();
+        String ipForJob1 = Scheduler.getIpForJob(job1);
         Scheduler.scheduleJob(job1, ipForJob1);
 
-        String ipForJob2 = Scheduler.getIpForJob();
+        String ipForJob2 = Scheduler.getIpForJob(job2);
         Scheduler.scheduleJob(job2, ipForJob2);
 
-        String ipForJob3 = Scheduler.getIpForJob();
+        String ipForJob3 = Scheduler.getIpForJob(job3);
         Scheduler.scheduleJob(job3, ipForJob3);
 
-        String ipForJob4 = Scheduler.getIpForJob();
+        String ipForJob4 = Scheduler.getIpForJob(job4);
         Scheduler.scheduleJob(job4, ipForJob4);
 
 

@@ -25,11 +25,12 @@ public class LoadBalancer {
         @Override
         public void handle(HttpExchange t) throws IOException {
 
-            //The IP of the host to which we want to redirect the request
-            String ipForJob = Scheduler.getIpForJob();
-
             // Create a new job. Add to scheduler
             Job job = new Job("file1", 1000, 1000, 300, 300, 0, 0);
+
+            //The IP of the host to which we want to redirect the request
+            String ipForJob = Scheduler.getIpForJob(job);
+
             Scheduler.scheduleJob(job, ipForJob);
 
             String charset = java.nio.charset.StandardCharsets.UTF_8.name();

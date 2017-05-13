@@ -17,8 +17,13 @@ public class WebServer {
 
     protected static AtomicInteger counter = new AtomicInteger(0);
 
+    private static MetricsManager metricsManager;
+
     public static void main(String[] args) throws Exception {
-    
+
+        metricsManager = new MetricsManager();
+        metricsManager.init();
+
     	File outputImgDir = new File("rendered-images");
 		outputImgDir.mkdir();
 		
@@ -72,7 +77,7 @@ public class WebServer {
                 int roff = Integer.parseInt(arguments.get("roff"));
                 
                 // pass the request arguments to the instrumentation class for the metrics
-                MethodCallsCount.setRequestArguments(arguments.get("f"), sc, sr, wc, wr, coff, roff);
+                MethodCallsCount.setRequestArguments(arguments.get("f"), sc, sr, wc, wr, coff, roff, metricsManager);
                 
                 RayTracer raytracer = new RayTracer(sc, sr, wc, wr, coff, roff);
                 raytracer.readScene(inFile);
