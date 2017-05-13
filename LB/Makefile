@@ -2,7 +2,7 @@ LB_CLASSES= LoadBalancer.java
 
 JAVA=java
 JC=javac
-CLASSPATH=/opt/aws-java-sdk/lib/aws-java-sdk-1.11.126.jar:/opt/aws-java-sdk/third-party/lib/*:.:../MetricsManager/
+CLASSPATH= /opt/aws-java-sdk/lib/aws-java-sdk-1.11.128.jar:/opt/aws-java-sdk/third-party/lib/*:.:../MetricsManager/
 JAVA_OPTIONS=-XX:-UseSplitVerifier -Duser.language=en -Duser.country=US
 
 

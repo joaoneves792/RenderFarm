@@ -4,7 +4,7 @@ INSTRUMENTED_FOLDERS= ./raytracer-master/src/raytracer ./raytracer-master/src/ra
 
 JAVA=java
 JC=javac
-CLASSPATH=.:./BIT:./BIT/samples:./raytracer-master/src:/opt/aws-java-sdk/lib/aws-java-sdk-1.11.126.jar:/opt/aws-java-sdk/third-party/lib/*:../MetricsManager
+CLASSPATH=.:./BIT:./BIT/samples:./raytracer-master/src:/opt/aws-java-sdk/lib/aws-java-sdk-1.11.128.jar:/opt/aws-java-sdk/third-party/lib/*:../MetricsManager
 JAVA_OPTIONS=-XX:-UseSplitVerifier -Duser.language=en -Duser.country=US
 
 
