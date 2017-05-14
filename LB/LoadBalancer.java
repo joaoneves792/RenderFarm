@@ -1,5 +1,8 @@
 import java.io.*;
 import java.net.*;
+import java.util.HashMap;
+import java.util.Map;
+
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -17,16 +20,58 @@ public class LoadBalancer {
         server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(5)); // creates a default executor
         Scheduler.init();
         server.start();
+        System.out.println("Load Balancer ready!");
     }
 
+    private static Job parseArguments(String query)throws NumberFormatException{
+
+        Map<String, String> arguments = new HashMap<>();
+        for(String arg : query.split("&")) {
+            String pair[] = arg.split("=");
+            if(pair.length > 1) {
+                arguments.put(pair[0], pair[1]);
+            }
+        }
+
+        if(arguments.containsKey("sc") && arguments.containsKey("sr") &&
+                arguments.containsKey("wc") && arguments.containsKey("wr") &&
+                arguments.containsKey("coff") && arguments.containsKey("roff") &&
+                arguments.containsKey("f")) {
+            try {
+                int sc = Integer.parseInt(arguments.get("sc"));
+                int sr = Integer.parseInt(arguments.get("sr"));
+                int wc = Integer.parseInt(arguments.get("wc"));
+                int wr = Integer.parseInt(arguments.get("wr"));
+                int coff = Integer.parseInt(arguments.get("coff"));
+                int roff = Integer.parseInt(arguments.get("roff"));
+                String fileName = arguments.get("f");
+
+                return new Job(fileName, wc, wr, sc, sr, coff, roff);
+            }catch (NumberFormatException e){
+                return null;
+            }
+        }else{
+            return null;
+        }
+    }
 
     static class RenderHandler implements HttpHandler {
 		
         @Override
         public void handle(HttpExchange t) throws IOException {
 
+           Job job = parseArguments(t.getRequestURI().getQuery());
+           if(null == job){
+               String response = "Invalid request!";
+               System.out.println(response);
+               t.sendResponseHeaders(200, response.length());
+               OutputStream os = t.getResponseBody();
+               os.write(response.getBytes());
+               os.close();
+               return;
+           }
+
             // Create a new job. Add to scheduler
-            Job job = new Job("file1", 1000, 1000, 300, 300, 0, 0);
 
             //The IP of the host to which we want to redirect the request
             String ipForJob = Scheduler.getIpForJob(job);

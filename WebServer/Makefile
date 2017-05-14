@@ -44,8 +44,8 @@ run: jdk-version-check
 	$(JAVA) $(JAVA_OPTIONS) -cp $(CLASSPATH) WebServer
 	
 clean:
-	rm -R rendered-images
-	rm _instrumentation_data.txt
-	rm *.class
-	make clean -C ./BIT/samples
-	make clean -C ./raytracer-master
+	-rm -R rendered-images
+	-rm _instrumentation_data.txt
+	-rm *.class
+	-make clean -C ./BIT/samples
+	-make clean -C ./raytracer-master

@@ -73,6 +73,7 @@ public class MetricsManager {
                                 .withInt(":coff", coff)
                                 .withInt(":roff", roff)
                 );
+
         try {
             ItemCollection<ScanOutcome> items = metricsTable.scan(scanSpec);
             Iterator<Item> iter = items.iterator();

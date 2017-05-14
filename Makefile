@@ -4,6 +4,6 @@ all:
 	make -C ./MetricsManager/
 
 clean: 
-	make clean -C ./WebServer/
-	make clean -C ./LB/
-	make clean -C ./MetricsManager/
+	-make clean -C ./WebServer/
+	-make clean -C ./LB/
+	-make clean -C ./MetricsManager/
