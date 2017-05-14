@@ -5,48 +5,32 @@ import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.services.autoscaling.AmazonAutoScaling;
 import com.amazonaws.services.autoscaling.AmazonAutoScalingClientBuilder;
-import com.amazonaws.services.autoscaling.model.AutoScalingInstanceDetails;
-import com.amazonaws.services.autoscaling.model.ScheduledUpdateGroupAction;
+import com.amazonaws.services.autoscaling.model.*;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
 import com.amazonaws.services.ec2.model.*;
+import com.amazonaws.services.ec2.model.Instance;
 
 
 public class Scheduler {
-    static HashMap<String, HashMap<String, Job>> instanceJobMap = new HashMap<String, HashMap<String, Job>>();
     private static final String REGION = "eu-west-1";
-    private static final String AUTOSCALING_GROUP_NAME = " RENDERFARM_ASG";
-    private static AWSCredentials _credentials;
+    private static final String AUTOSCALING_GROUP_NAME = "RENDERFARM_ASG";
     private static final int THREAD_COUNT_ON_INSTANCES = 2;
 
+    static HashMap<String, HashMap<String, Job>> instanceJobMap = new HashMap<String, HashMap<String, Job>>();
+    private static AWSCredentials _credentials;
     private static MetricsManager metricsManager;
-
-    private static void loadCredentials() {
-        try {
-            _credentials = new ProfileCredentialsProvider().getCredentials();
-        } catch (Exception e) {
-            throw new AmazonClientException(
-                    "Cannot load the credentials from the credential profiles file. " +
-                            "Please make sure that your credentials file is at the correct " +
-                            "location (~/.aws/credentials), and is in valid format.",
-                    e);
-        }
-    }
+    private static HashMap<String, Long> latestJobForInstance;
+    private static AmazonAutoScaling _amazonAutoScalingClient;
+    private static AmazonEC2 _ec2Client;
 
     private static List<String> getGroupIPs() {
         List<String> IPs = new LinkedList<>();
-
-        /*Get the instance IDs of the instances in our autoscaling group*/
-        AmazonAutoScaling amazonAutoScalingClient = AmazonAutoScalingClientBuilder
-                .standard()
-                .withRegion(REGION)
-                .withCredentials(new AWSStaticCredentialsProvider(_credentials))
-                .build();
-
-        List<AutoScalingInstanceDetails> details = amazonAutoScalingClient
+        List<AutoScalingInstanceDetails> details = _amazonAutoScalingClient
                 .describeAutoScalingInstances()
                 .getAutoScalingInstances();
 
+        /*Get the instance IDs of the instances in our autoscaling group*/
         List<String> groupInstances = new LinkedList<>();
         for(AutoScalingInstanceDetails detail : details){
             if(detail.getAutoScalingGroupName().equals(AUTOSCALING_GROUP_NAME)) {
@@ -55,14 +39,9 @@ public class Scheduler {
         }
 
         /*Now get their public IPs*/
-        AmazonEC2 ec2 = AmazonEC2ClientBuilder
-                .standard()
-                .withRegion(REGION)
-                .withCredentials(new AWSStaticCredentialsProvider(_credentials))
-                .build();
         DescribeInstancesRequest describeRequest = new DescribeInstancesRequest();
         describeRequest.setInstanceIds(groupInstances);
-        DescribeInstancesResult instances = ec2.describeInstances(describeRequest);
+        DescribeInstancesResult instances = _ec2Client.describeInstances(describeRequest);
         List<Reservation> reservations = instances.getReservations();
         for(Reservation r : reservations){
             for(Instance i : r.getInstances()){
@@ -73,7 +52,27 @@ public class Scheduler {
     }
 
     public static void init() {
-        loadCredentials();
+        try {
+            _credentials = new ProfileCredentialsProvider().getCredentials();
+        } catch (Exception e) {
+            throw new AmazonClientException(
+                    "Cannot load the credentials from the credential profiles file. " +
+                            "Please make sure that your credentials file is at the correct " +
+                            "location (~/.aws/credentials), and is in valid format.",
+                    e);
+        }
+
+        _amazonAutoScalingClient = AmazonAutoScalingClientBuilder
+                .standard()
+                .withRegion(REGION)
+                .withCredentials(new AWSStaticCredentialsProvider(_credentials))
+                .build();
+
+        _ec2Client = AmazonEC2ClientBuilder
+                .standard()
+                .withRegion(REGION)
+                .withCredentials(new AWSStaticCredentialsProvider(_credentials))
+                .build();
 
         // Populate our instance map with the ips to the instances in our auto-scaling group.
         List<String> ips = getGroupIPs();
@@ -101,7 +100,41 @@ public class Scheduler {
             instanceJobs.put(jobId, newJob);
             instanceJobMap.put(instanceIp, instanceJobs);
         }
+        latestJobForInstance.put(instanceIp, new Date().getTime());
+
+        if (Scheduler.allInstancesAreFull()) {
+            // Start new instance
+        }
+
         return jobId;
+    }
+
+    static void launchNewInstance() {
+        String id = "sg-c113d1b8";
+        System.out.println(id);
+
+        RunInstancesRequest runInstancesRequest = new RunInstancesRequest()
+                .withImageId("ami-61d7de07")
+                .withInstanceType("t2.micro")
+                .withMinCount(1)
+                .withMaxCount(1)
+                .withKeyName("project-aws-new")
+                .withSecurityGroupIds(id);
+
+        RunInstancesResult result = _ec2Client.runInstances(runInstancesRequest);
+        Instance newInstance = result.getReservation().getInstances().get(0);
+        String instanceId = newInstance.getInstanceId();
+
+        // Big problem: We have to wait until the instance state is "running" before we can add to asg.
+        // I'm not sure what to do here:
+        // Idea: Run this on a seperate thread, do some sort of "sleep for 60 seconds" then check state. If state is running we add to asg.
+
+        AttachInstancesRequest request = new AttachInstancesRequest()
+                .withInstanceIds(instanceId)
+                .withAutoScalingGroupName(AUTOSCALING_GROUP_NAME);
+
+        _amazonAutoScalingClient.attachInstances(request);
+
     }
 
     public static void finishJob(Job job, String instanceIp) {
@@ -119,6 +152,9 @@ public class Scheduler {
             throw new Error("Please call init() before attempting to schedule jobs.");
         }
 
+        if (instanceJobMap.size() == 0)
+            return true;
+
         for(Map.Entry<String, HashMap<String, Job>> entry : instanceJobMap.entrySet()) {
             HashMap<String, Job> jobsForInstance = entry.getValue();
             if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES)
@@ -133,7 +169,7 @@ public class Scheduler {
         double cost = job.estimateCost(metricsManager);
         System.out.println("Estimated cost: " + cost);
 
-        // Assuming max two jobs pr server, return server ip with less than two jobs.
+        // Assuming max THREAD_COUNT_ON_INSTANCES jobs pr server, return server ip with less than THREAD_COUNT_ON_INSTANCES jobs.
         for(Map.Entry<String, HashMap<String, Job>> ipJobsKeyPair : instanceJobMap.entrySet()) {
             String ip = ipJobsKeyPair.getKey();
             HashMap<String, Job> jobsForInstance = ipJobsKeyPair.getValue();
@@ -151,24 +187,6 @@ public class Scheduler {
 
     public static void main(String[] args) {
         Scheduler.init();
-        Job job1 = new Job("file1", 1000, 1000, 200, 200, 0,0);
-        Job job2 = new Job("file1", 1000, 1000, 200, 200, 0,0);
-        Job job3 = new Job("file1", 1000, 1000, 200, 200, 0,0);
-        Job job4= new Job("file1", 1000, 1000, 200, 200, 0,0);
 
-        String ipForJob1 = Scheduler.getIpForJob(job1);
-        Scheduler.scheduleJob(job1, ipForJob1);
-
-        String ipForJob2 = Scheduler.getIpForJob(job2);
-        Scheduler.scheduleJob(job2, ipForJob2);
-
-        String ipForJob3 = Scheduler.getIpForJob(job3);
-        Scheduler.scheduleJob(job3, ipForJob3);
-
-        String ipForJob4 = Scheduler.getIpForJob(job4);
-        Scheduler.scheduleJob(job4, ipForJob4);
-
-
-        System.out.println(Scheduler.allInstancesAreFull());
     }
 }
