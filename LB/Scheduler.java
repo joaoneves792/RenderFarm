@@ -1,4 +1,8 @@
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
@@ -16,8 +20,11 @@ public class Scheduler {
     private static final String REGION = "eu-west-1";
     private static final String AUTOSCALING_GROUP_NAME = "RENDERFARM_ASG";
     private static final int THREAD_COUNT_ON_INSTANCES = 2;
+    private static final int AGS_POLL_RATE_SECONDS = 30;
+    private static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
-    static HashMap<String, HashMap<String, Job>> instanceJobMap = new HashMap<String, HashMap<String, Job>>();
+
+    private static HashMap<String, HashMap<String, Job>> instanceJobMap = new HashMap<String, HashMap<String, Job>>();
     private static AWSCredentials _credentials;
     private static MetricsManager metricsManager;
     private static HashMap<String, Long> latestJobForInstance;
@@ -75,15 +82,19 @@ public class Scheduler {
                 .build();
 
         // Populate our instance map with the ips to the instances in our auto-scaling group.
-        List<String> ips = getGroupIPs();
-        for (String ip : ips) {
-            instanceJobMap.put(ip, new HashMap<String, Job>());
-        }
 
         metricsManager = new MetricsManager();
         metricsManager.init();
 
+        scheduler.scheduleAtFixedRate(new Runnable() {
+            @Override
+            public void run() {
+                Scheduler.pollIPsFromAGS();
+            }
+        }, 0, AGS_POLL_RATE_SECONDS, TimeUnit.SECONDS);
+
     }
+
 
     public static String scheduleJob(Job newJob, String instanceIp) {
         if (_credentials == null) {
@@ -109,31 +120,34 @@ public class Scheduler {
         return jobId;
     }
 
-    static void launchNewInstance() {
-        String id = "sg-c113d1b8";
-        System.out.println(id);
+    private static void pollIPsFromAGS() {
+        List<String> ipsInAGS = Scheduler.getGroupIPs();
 
-        RunInstancesRequest runInstancesRequest = new RunInstancesRequest()
-                .withImageId("ami-61d7de07")
-                .withInstanceType("t2.micro")
-                .withMinCount(1)
-                .withMaxCount(1)
-                .withKeyName("project-aws-new")
-                .withSecurityGroupIds(id);
+        // Add ip's that are not in the group.
+        // This is the case where we have added a new instance.
+        for(String ip : ipsInAGS) {
+            if (!instanceJobMap.containsKey(ip) && ip != null) {
+                instanceJobMap.put(ip, new HashMap<String, Job> ());
+                System.out.println("Added: " + ip);
+            }
+        }
 
-        RunInstancesResult result = _ec2Client.runInstances(runInstancesRequest);
-        Instance newInstance = result.getReservation().getInstances().get(0);
-        String instanceId = newInstance.getInstanceId();
+        // Check if some of the IPs in the instanceJobMap does not exist
+        // in the ASG. (This is the case where we have removed an instance.
+        for(String ip: instanceJobMap.keySet()) {
+            if (!ipsInAGS.contains(ip)) {
+                instanceJobMap.remove(ip);
+                System.out.println("Removed: " + ip);
+            }
+        }
 
-        // Big problem: We have to wait until the instance state is "running" before we can add to asg.
-        // I'm not sure what to do here:
-        // Idea: Run this on a seperate thread, do some sort of "sleep for 60 seconds" then check state. If state is running we add to asg.
+    }
 
-        AttachInstancesRequest request = new AttachInstancesRequest()
-                .withInstanceIds(instanceId)
-                .withAutoScalingGroupName(AUTOSCALING_GROUP_NAME);
-
-        _amazonAutoScalingClient.attachInstances(request);
+    static void setDesiredCapacity(int capacity) {
+        SetDesiredCapacityRequest desiredCapacity = new SetDesiredCapacityRequest()
+                    .withAutoScalingGroupName(AUTOSCALING_GROUP_NAME)
+                    .withDesiredCapacity(capacity);
+        _amazonAutoScalingClient.setDesiredCapacity(desiredCapacity);
 
     }
 
@@ -169,12 +183,13 @@ public class Scheduler {
         double cost = job.estimateCost(metricsManager);
         System.out.println("Estimated cost: " + cost);
 
-        // Assuming max THREAD_COUNT_ON_INSTANCES jobs pr server, return server ip with less than THREAD_COUNT_ON_INSTANCES jobs.
+        // Assuming max two jobs pr server, return server ip with less than two jobs.
         for(Map.Entry<String, HashMap<String, Job>> ipJobsKeyPair : instanceJobMap.entrySet()) {
             String ip = ipJobsKeyPair.getKey();
             HashMap<String, Job> jobsForInstance = ipJobsKeyPair.getValue();
 
             if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES) {
+                // TODO: We have to make sure that the instance of the IP has not been terminated
                 return ip;
             }
         }
