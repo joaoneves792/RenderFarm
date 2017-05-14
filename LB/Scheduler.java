@@ -25,7 +25,6 @@ public class Scheduler {
 
 
     private static HashMap<String, HashMap<String, Job>> instanceJobMap = new HashMap<String, HashMap<String, Job>>();
-    private static AWSCredentials _credentials;
     private static MetricsManager metricsManager;
     private static HashMap<String, Long> latestJobForInstance;
     private static AmazonAutoScaling _amazonAutoScalingClient;
@@ -59,48 +58,24 @@ public class Scheduler {
     }
 
     public static void init() {
-        try {
-            _credentials = new ProfileCredentialsProvider().getCredentials();
-        } catch (Exception e) {
-            throw new AmazonClientException(
-                    "Cannot load the credentials from the credential profiles file. " +
-                            "Please make sure that your credentials file is at the correct " +
-                            "location (~/.aws/credentials), and is in valid format.",
-                    e);
-        }
-
         _amazonAutoScalingClient = AmazonAutoScalingClientBuilder
                 .standard()
                 .withRegion(REGION)
-                .withCredentials(new AWSStaticCredentialsProvider(_credentials))
                 .build();
 
         _ec2Client = AmazonEC2ClientBuilder
                 .standard()
                 .withRegion(REGION)
-                .withCredentials(new AWSStaticCredentialsProvider(_credentials))
                 .build();
 
         // Populate our instance map with the ips to the instances in our auto-scaling group.
 
         metricsManager = new MetricsManager();
         metricsManager.init();
-
-        scheduler.scheduleAtFixedRate(new Runnable() {
-            @Override
-            public void run() {
-                Scheduler.pollIPsFromAGS();
-            }
-        }, 0, AGS_POLL_RATE_SECONDS, TimeUnit.SECONDS);
-
     }
 
 
     public static String scheduleJob(Job newJob, String instanceIp) {
-        if (_credentials == null) {
-            throw new Error("Please call init() before attempting to schedule jobs.");
-        }
-
         String jobId = newJob.getJobId();
         newJob.start();
 
@@ -110,11 +85,6 @@ public class Scheduler {
             HashMap<String, Job> instanceJobs = new HashMap<String, Job>();
             instanceJobs.put(jobId, newJob);
             instanceJobMap.put(instanceIp, instanceJobs);
-        }
-        latestJobForInstance.put(instanceIp, new Date().getTime());
-
-        if (Scheduler.allInstancesAreFull()) {
-            // Start new instance
         }
 
         return jobId;
@@ -143,7 +113,7 @@ public class Scheduler {
 
     }
 
-    static void setDesiredCapacity(int capacity) {
+    private static void setDesiredCapacity(int capacity) {
         SetDesiredCapacityRequest desiredCapacity = new SetDesiredCapacityRequest()
                     .withAutoScalingGroupName(AUTOSCALING_GROUP_NAME)
                     .withDesiredCapacity(capacity);
@@ -152,20 +122,12 @@ public class Scheduler {
     }
 
     public static void finishJob(Job job, String instanceIp) {
-        if (_credentials == null) {
-            throw new Error("Please call init() before attempting to schedule jobs.");
-        }
-
         job.stop();
         HashMap<String, Job> jobsForInstance = instanceJobMap.get(instanceIp);
         jobsForInstance.remove(job.getJobId());
     }
 
     public static boolean allInstancesAreFull() {
-        if (_credentials == null) {
-            throw new Error("Please call init() before attempting to schedule jobs.");
-        }
-
         if (instanceJobMap.size() == 0)
             return true;
 
@@ -178,6 +140,8 @@ public class Scheduler {
     }
 
     public static String getIpForJob(Job job) {
+        // Refresh instances before we select server.
+        Scheduler.pollIPsFromAGS();
 
         //Get the estimated cost for running this job
         double cost = job.estimateCost(metricsManager);
