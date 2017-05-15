@@ -68,7 +68,7 @@ public class WebServer {
                 File inFile = new File("raytracer-master/" + arguments.get("f"));
                 File outFile = new File("rendered-images/" + counter.getAndIncrement() + ".bmp");
                 
-                //TODO we are not checking if these actually exist
+                //We are not checking if these actually exist here, but we are validating them in the LB
                 int sc = Integer.parseInt(arguments.get("sc"));
                 int sr = Integer.parseInt(arguments.get("sr"));
                 int wc = Integer.parseInt(arguments.get("wc"));

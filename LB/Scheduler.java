@@ -153,7 +153,6 @@ public class Scheduler {
             HashMap<String, Job> jobsForInstance = ipJobsKeyPair.getValue();
 
             if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES) {
-                // TODO: We have to make sure that the instance of the IP has not been terminated
                 return ip;
             }
         }

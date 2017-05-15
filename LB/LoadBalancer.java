@@ -7,9 +7,12 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
+import static java.net.HttpURLConnection.HTTP_OK;
+
 
 public class LoadBalancer {
     private static final String RENDER_RESOURCE = "/r.html";
+    private static final String TEST_RESOURCE = "/test";
     private static final int LB_PORT = 8001;
     private static final int WS_PORT = 8000;
 
@@ -55,6 +58,47 @@ public class LoadBalancer {
         }
     }
 
+    private static boolean isDead(String ip){
+        final int RETRY_INTERVAL = 1000;
+        final int TIMEOUT = 2000;
+        HttpURLConnection connection = null;
+
+        for(int retries=3; retries > 0; retries--) {
+            try {
+                connection = (HttpURLConnection) new URL("http", ip, WS_PORT, TEST_RESOURCE).openConnection();
+                connection.setConnectTimeout(TIMEOUT);
+
+                if(connection.getResponseCode() == HTTP_OK) {
+                    connection.disconnect();
+                    return false;
+                }
+                System.out.println("Server @ " + ip + " failed to respond! Retrying...");
+                Thread.sleep(RETRY_INTERVAL);
+            } catch (IOException e) {
+                //just retry
+                if(null != connection)
+                    connection.disconnect();
+                try {
+                    System.out.println("Server @ " + ip + " failed to respond! Retrying...");
+                    Thread.sleep(RETRY_INTERVAL);
+                }catch (InterruptedException ex){
+                    if(null != connection)
+                        connection.disconnect();
+                    return true;
+                }
+            }catch (InterruptedException e){
+                if(null != connection)
+                    connection.disconnect();
+                return true;
+            }
+        }
+        System.out.println("Server @ " + ip + " is dead!");
+        if(null != connection)
+            connection.disconnect();
+        return true; //If all the retries failed to produce a 200 OK then the server must be dead
+        //TODO hook some code to remove this instance from our list (or try to reboot it)
+    }
+
     static class RenderHandler implements HttpHandler {
 		
         @Override
@@ -72,9 +116,11 @@ public class LoadBalancer {
            }
 
             // Create a new job. Add to scheduler
-
             //The IP of the host to which we want to redirect the request
-            String ipForJob = Scheduler.getIpForJob(job);
+            String ipForJob;
+            do {
+                ipForJob = Scheduler.getIpForJob(job);
+            }while (isDead(ipForJob));
 
             Scheduler.scheduleJob(job, ipForJob);
 
