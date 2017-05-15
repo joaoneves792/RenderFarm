@@ -140,6 +140,7 @@ public class Scheduler {
     }
 
     public static String getIpForJob(Job job) {
+        //TODO this should be done periodically and not every time we receive a request
         // Refresh instances before we select server.
         Scheduler.pollIPsFromAGS();
 

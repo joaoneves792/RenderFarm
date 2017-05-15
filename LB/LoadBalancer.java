@@ -20,7 +20,7 @@ public class LoadBalancer {
 
         HttpServer server = HttpServer.create(new InetSocketAddress(LB_PORT), 0);
         server.createContext(RENDER_RESOURCE, new RenderHandler());
-        server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(5)); // creates a default executor
+        server.setExecutor(java.util.concurrent.Executors.newCachedThreadPool()); // creates a default executor
         Scheduler.init();
         server.start();
         System.out.println("Load Balancer ready!");
