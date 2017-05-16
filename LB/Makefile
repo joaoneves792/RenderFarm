@@ -10,7 +10,7 @@ JAVA_OPTIONS=-XX:-UseSplitVerifier -Duser.language=en -Duser.country=US
 .java.class:
 	$(JC) -cp $(CLASSPATH) $*.java
 
-all: warning jdk-version-check lb
+all: warning jdk-version-check clean lb
 
 .PHONY: jdk-version-check
 jdk-version-check:

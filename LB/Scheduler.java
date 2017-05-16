@@ -86,33 +86,75 @@ public class Scheduler {
         
 // 		setDesiredCapacity(1);
     }
-
-
-    public static String scheduleJob(Job newJob, String instanceIp) {
+    
+    
+    
+    public static String getIpForJob(Job newJob) {
+    
+        //TODO this should be done periodically and not every time we receive a request
+        // Refresh instances before we select server.
+        Scheduler.pollIPsFromAGS();
+        
+        //Get the estimated cost for running this job
+        double cost = newJob.estimateCost(_metricsManager);
+        
+		String bestIP = "";
+		int jobCountOnBestIP = 9999;
+		double totalEstimatedCost = 0;
 		
-		String jobId = newJob.getJobId();
+		for(Map.Entry<String, ConcurrentHashMap<String, Job>> ipJobsKeyPair : _instanceJobMap.entrySet()) {
+			
+			String ip = ipJobsKeyPair.getKey();
+			ConcurrentHashMap<String, Job> jobsForInstance = ipJobsKeyPair.getValue();
+			
+			// return first instance found with free threads
+			if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES) {
+				return ip;
+				
+			// FIXME calculate best possible based on some formula
+			} else {
+				if (jobsForInstance.size() < jobCountOnBestIP) {
+					bestIP = ip;
+					jobCountOnBestIP = jobsForInstance.size();
+					
+					for(Job job : jobsForInstance.values()) {
+						totalEstimatedCost += job.getEstimatedCost();
+					}
+					System.out.println(red("\nAt capacity: ") + ip);
+// 					System.out.println(red("\nAt capacity: ") + ip + "\tcurrent cost " + totalEstimatedCost);
+				}
+			}
+		}
+		
+		
+		// FIXME 
+		// If we come here it means that all the servers where fully loaded
+		// Now we have to select by job size or according to time.
+		
+		// start a new instance based on a threshoold
+		System.out.println(yellow("\nTotal Estimate: ") + totalEstimatedCost);
+		if(totalEstimatedCost > ESTIMATED_COST_THRESHOLD) {
+			System.out.println("Starting a new instance...");
+			setDesiredCapacity(_instanceJobMap.size()+1);
+		}
+		
+        return bestIP;
+    }
+
+
+    public static synchronized String scheduleJob(Job newJob) {
+		
+		String ip = getIpForJob(newJob);
+		
+		_instanceJobMap.get(ip).put(newJob.getJobId(), newJob);
+		
 		newJob.start();
 		
-		ConcurrentHashMap<String, Job> jobsForInstance = _instanceJobMap.get(instanceIp);
-		
-        if(jobsForInstance != null) {
-			synchronized(jobsForInstance) {
-				jobsForInstance.put(jobId, newJob);
-			}
-			
-		} else {
-			ConcurrentHashMap<String, Job> instanceJobs = new ConcurrentHashMap<String, Job>();
-			instanceJobs.put(jobId, newJob);
-			_instanceJobMap.put(instanceIp, instanceJobs);
-			
-			System.out.println("created new map " + _instanceJobMap.get(instanceIp).size());
-		}
-        
-        return jobId;
+        return ip;
     }
     
     
-    public static void finishJob(Job job, String instanceIp) {
+    public static  void finishJob(Job job, String instanceIp) {
         job.stop();
 		
 		ConcurrentHashMap<String, Job> jobsForInstance = _instanceJobMap.get(instanceIp);
@@ -128,9 +170,9 @@ public class Scheduler {
         // Add ip's that are not in the group.
         // This is the case where we have added a new instance.
         for(String ip : ipsInAGS) {
-            if (!_instanceJobMap.containsKey(ip) && ip != null) {
+            if (ip != null && !_instanceJobMap.containsKey(ip)) {
                 _instanceJobMap.put(ip, new ConcurrentHashMap<String, Job> ());
-                System.out.println("\nAdded: " + ip);
+                System.out.println(cyan("\nAdded instance: ") + ip);
             }
         }
         
@@ -139,7 +181,7 @@ public class Scheduler {
         for(String ip: _instanceJobMap.keySet()) {
             if (!ipsInAGS.contains(ip)) {
                 _instanceJobMap.remove(ip);
-                System.out.println("\nRemoved: " + ip);
+                System.out.println(cyan("\nRemoved instance: ") + ip);
             }
         }
         
@@ -151,7 +193,6 @@ public class Scheduler {
                     .withAutoScalingGroupName(AUTOSCALING_GROUP_NAME)
                     .withDesiredCapacity(capacity);
         _amazonAutoScalingClient.setDesiredCapacity(desiredCapacity);
-        
     }
     
 
@@ -169,70 +210,18 @@ public class Scheduler {
     }
     
 
-    public static String getIpForJob(Job newJob) {
-    
-        //TODO this should be done periodically and not every time we receive a request
-        // Refresh instances before we select server.
-        Scheduler.pollIPsFromAGS();
-        
-        //Get the estimated cost for running this job
-        double cost = newJob.estimateCost(_metricsManager);
-//         System.out.println("\nEstimated cost: " + cost);
-        
-		double totalEstimatedCost = 0;
-		String bestIP = "";
-		int jobCountOnBestIP = 9999;
-						
-		synchronized(bestIP) {
-			// Assuming max two jobs pr server, return server ip with less than two jobs.
-			for(Map.Entry<String, ConcurrentHashMap<String, Job>> ipJobsKeyPair : _instanceJobMap.entrySet()) {
-				
-				String ip = ipJobsKeyPair.getKey();
-				ConcurrentHashMap<String, Job> jobsForInstance = ipJobsKeyPair.getValue();
-				
-				synchronized(jobsForInstance) {
-					// return first instance found with free threads
-					if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES) {
-						return ip;
-						
-					// FIXME calculate best possible based on some formula
-					} else {
-// 						synchronized(bestIP) {
-							if (jobsForInstance.size() < jobCountOnBestIP) {
-								System.out.println("\n" + ip + " was full. current cost " + totalEstimatedCost);
-								bestIP = ip;
-								jobCountOnBestIP = jobsForInstance.size();
-								
-								for(Job job : jobsForInstance.values()) {
-									totalEstimatedCost += job.getEstimatedCost();
-								}
-							}
-// 						}
-					}
-				}
-			}
-		}
-		
-		
-		// FIXME 
-		// If we come here it means that all the servers where fully loaded
-		// Now we have to select by job size or according to time.
-		
-		System.out.println("Total Estimate " + totalEstimatedCost);
-		// start a new instance based on a threashoold
-		if(totalEstimatedCost > ESTIMATED_COST_THRESHOLD) {
-			System.out.println("Starting a new instance...");
-			setDesiredCapacity(_instanceJobMap.size()+1);
-		}
-			
-        
-        return bestIP;
-    }
     
 
     public static void main(String[] args) {
         Scheduler.init();
     }
+    
+    public static String red(String text) { return "\u001B[31m" + text + "\u001B[0m"; }
+    public static String green(String text) { return "\u001B[32m" + text + "\u001B[0m"; }
+	public static String yellow(String text) { return "\u001B[33m" + text + "\u001B[0m"; }
+	public static String cyan(String text) { return "\u001B[36m" + text + "\u001B[0m"; }
+	public static String italic(String text) { return "\u001B[03m" + text + "\u001B[0m"; }
+
     
 }
 

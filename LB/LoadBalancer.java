@@ -133,10 +133,8 @@ public class LoadBalancer {
 			//The IP of the host to which we want to redirect the request
 			String ipForJob;
 			do {
-				ipForJob = Scheduler.getIpForJob(job);
+				ipForJob = Scheduler.scheduleJob(job);
 			} while (isDead(ipForJob));
-			
-			Scheduler.scheduleJob(job, ipForJob);
 			
 			String charset = java.nio.charset.StandardCharsets.UTF_8.name();
 			String query = t.getRequestURI().getQuery();
@@ -145,7 +143,7 @@ public class LoadBalancer {
 			connection.setRequestProperty("Accept-Charset", charset);
 			
 			try {
-				System.out.println("\nEstimated cost: " + job.getEstimatedCost() + "\nSent job to: " + ipForJob);
+				System.out.println(green("\nSent job to: ") + ipForJob + italic("\tEstimated cost: ") + job.getEstimatedCost());
 // 				System.out.println("Sent job to: " + ipForJob);
 				InputStream response = connection.getInputStream();
 				ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -176,7 +174,12 @@ public class LoadBalancer {
 		}
 	}
 	
-		
+    public static String red(String text) { return "\u001B[31m" + text + "\u001B[0m"; }
+    public static String green(String text) { return "\u001B[32m" + text + "\u001B[0m"; }
+	public static String yellow(String text) { return "\u001B[33m" + text + "\u001B[0m"; }
+	public static String cyan(String text) { return "\u001B[36m" + text + "\u001B[0m"; }
+	public static String italic(String text) { return "\u001B[03m" + text + "\u001B[0m"; }
+
 }
 
 

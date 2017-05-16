@@ -28,12 +28,14 @@ public class Job {
     }
     
     
-    public void start() {
-        this.jobStartedTime = new Date().getTime();
-    }
-    
+	public void start() {
+// 		System.out.println("\nSTART : " + jobId);
+		this.jobStartedTime = new Date().getTime();
+	}
+	
     
     public void stop() {
+//    		System.out.println("\nSTOP : " + jobId);
         this.jobEndedTime = new Date().getTime();
         this.jobIsDone = true;
     }
