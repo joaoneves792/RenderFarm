@@ -31,7 +31,7 @@ import java.text.SimpleDateFormat;
 
 public class MethodCallsCount {
 	private static PrintStream out = null;
-	private static ThreadLocal<Integer> counter;
+	private static ThreadLocal<Long> counter;
 	
 	private static ThreadLocal<String> input_file;
 	private static ThreadLocal<Integer> sc;
@@ -151,7 +151,7 @@ public class MethodCallsCount {
 	}
 	
 	// legacy function to get the methods counter from the RenderHandler
-	public static int getMethodsCounter() {
+	public static long getMethodsCounter() {
 		return counter.get();
 	}
 
@@ -190,13 +190,13 @@ public class MethodCallsCount {
 
 	public static void initializeMCount(int value) {
 		if(null == counter){
-			counter = new ThreadLocal<Integer>() {
-				@Override protected Integer initialValue() {
-					return 0;
+			counter = new ThreadLocal<Long>() {
+				@Override protected Long initialValue() {
+					return (long) 0;
 				}
 			};
 		}
-		counter.set(0);
+		counter.set((long) 0);
 	}
 	
 	public static void resetRequestArguments(int value) {

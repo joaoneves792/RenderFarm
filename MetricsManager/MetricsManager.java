@@ -19,16 +19,16 @@ public class MetricsManager {
                 .standard()
                 .withRegion(Regions.EU_WEST_1)
                 .build();
-
+		
         DynamoDB dynamoDB = new DynamoDB(client);
         String tableName = "metrics";
-
+        
         try {
             // Check if table exists
             Table table = dynamoDB.getTable(tableName);
             table.describe();
             metricsTable = table;
-
+            
         } catch (ResourceNotFoundException e) {
             // Create table with id as primary key,
             // Set fileName as sort-key to improve lookup
@@ -44,14 +44,15 @@ public class MetricsManager {
                 new ProvisionedThroughput(10L, 10L)
             );
         }
+        
         try {
             metricsTable.waitForActive();
-        }catch (InterruptedException e){
+        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
     }
 
-    static public int getMetrics(String filename, int sc, int sr, int wc, int wr, int coff, int roff) {
+    static public long getMetrics(String filename, int sc, int sr, int wc, int wr, int coff, int roff) {
         // 1. Should we only check metrics for the same file?
         // 2. If no metrics exists for current file, do we check the other files?
         ScanSpec scanSpec = new ScanSpec()
@@ -73,33 +74,33 @@ public class MetricsManager {
                                 .withInt(":coff", coff)
                                 .withInt(":roff", roff)
                 );
-
+                
         try {
             ItemCollection<ScanOutcome> items = metricsTable.scan(scanSpec);
             Iterator<Item> iter = items.iterator();
             if (iter.hasNext()) {
                 Item item = iter.next();
-                return item.getInt("mc");
+                return item.getLong("mc");
             }
-        }
-
-        catch (Exception e) {
+			
+        } catch (Exception e) {
             System.err.println("Unable to scan the table:");
             System.err.println(e.getMessage());
         }
+        
         return -1;
     }
 
     //No need to synchronize, Table is ThreadSafe
-    static public void saveMetrics(String fileName, int sc, int sr, int wc, int wr, int coff, int roff, int mc) {
+    static public void saveMetrics(String fileName, int sc, int sr, int wc, int wr, int coff, int roff, long mc) {
 
         //Check for existing metrics
         //TODO dont just eliminate duplicates, but also similar results
-        int existingMetrics = MetricsManager.getMetrics(fileName, sc, sr, wc, wr, coff, roff);
-        if(existingMetrics > -1){
+        long existingMetrics = MetricsManager.getMetrics(fileName, sc, sr, wc, wr, coff, roff);
+        if(existingMetrics > -1) {
             return;
         }
-
+        
         String id = UUID.randomUUID().toString();
         Item item = new Item();
         item.withPrimaryKey("id", id);
@@ -110,11 +111,11 @@ public class MetricsManager {
         item.withInt("wr", wr);
         item.withInt("coff", coff);
         item.withInt("roff", roff);
-        item.withInt("mc", mc);
+        item.withLong("mc", mc);
         metricsTable.putItem(item);
     }
 
-    static public double estimateCost(int methodCount) {
+    static public double estimateCost(long methodCount) {
         return 7 * Math.pow(10, -5) * methodCount;
     }
 
@@ -123,10 +124,10 @@ public class MetricsManager {
         // Will remove when done.
         MetricsManager.init();
         try {
-            int methodCount = MetricsManager.getMetrics("test01.txt",1000, 1000, 200, 250, 0,0);
+            long methodCount = MetricsManager.getMetrics("test01.txt",1000, 1000, 200, 250, 0,0);
             System.out.println(methodCount);
-        }
-        catch(Exception e) {
+			
+        } catch(Exception e) {
             System.out.println(e);
         }
     }

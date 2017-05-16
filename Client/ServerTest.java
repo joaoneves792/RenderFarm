@@ -34,7 +34,7 @@ public class ServerTest {
 		Timer timer = Timer.start();
 		
 		// loop similar requets
-		for (int i = 0; i <= 100; i=i+10) {
+		for (int i = 0; i <= 200; i=i+10) {
 			client.makeRequest(sem, "test05.txt", 400, 300, 400, 300, i, 0);
 		}
 		

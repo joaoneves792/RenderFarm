@@ -145,7 +145,8 @@ public class LoadBalancer {
 			connection.setRequestProperty("Accept-Charset", charset);
 			
 			try {
-				System.out.println("Sent job to: " + ipForJob);
+				System.out.println("\nEstimated cost: " + job.getEstimatedCost() + "\nSent job to: " + ipForJob);
+// 				System.out.println("Sent job to: " + ipForJob);
 				InputStream response = connection.getInputStream();
 				ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 				

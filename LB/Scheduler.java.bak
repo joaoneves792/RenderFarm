@@ -38,6 +38,9 @@ public class Scheduler {
     private static AmazonAutoScaling _amazonAutoScalingClient;
     private static AmazonEC2 _ec2Client;
     
+	private static Lock _lock = new ReentrantLock();
+
+    
     
     private static List<String> getGroupIPs() {
         List<String> IPs = new LinkedList<>();
@@ -93,12 +96,8 @@ public class Scheduler {
 		String jobId = newJob.getJobId();
 		newJob.start();
 		
-		ConcurrentHashMap<String, Job> jobsForInstance = _instanceJobMap.get(instanceIp);
-		
-        if(jobsForInstance != null) {
-			synchronized(jobsForInstance) {
-				jobsForInstance.put(jobId, newJob);
-			}
+		if (_instanceJobMap.containsKey(instanceIp)) {
+			_instanceJobMap.get(instanceIp).put(jobId, newJob);
 			
 		} else {
 			ConcurrentHashMap<String, Job> instanceJobs = new ConcurrentHashMap<String, Job>();
@@ -107,7 +106,6 @@ public class Scheduler {
 			
 			System.out.println("created new map " + _instanceJobMap.get(instanceIp).size());
 		}
-        
         return jobId;
     }
     
@@ -116,9 +114,7 @@ public class Scheduler {
         job.stop();
 		
 		ConcurrentHashMap<String, Job> jobsForInstance = _instanceJobMap.get(instanceIp);
-		synchronized(jobsForInstance) {
-			jobsForInstance.remove(job.getJobId());
-        }
+		jobsForInstance.remove(job.getJobId());
     }
     
 
@@ -183,47 +179,38 @@ public class Scheduler {
 		String bestIP = "";
 		int jobCountOnBestIP = 9999;
 						
-		synchronized(bestIP) {
 			// Assuming max two jobs pr server, return server ip with less than two jobs.
 			for(Map.Entry<String, ConcurrentHashMap<String, Job>> ipJobsKeyPair : _instanceJobMap.entrySet()) {
 				
 				String ip = ipJobsKeyPair.getKey();
 				ConcurrentHashMap<String, Job> jobsForInstance = ipJobsKeyPair.getValue();
 				
-				synchronized(jobsForInstance) {
-					// return first instance found with free threads
-					if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES) {
-						return ip;
-						
-					// FIXME calculate best possible based on some formula
-					} else {
-// 						synchronized(bestIP) {
-							if (jobsForInstance.size() < jobCountOnBestIP) {
-								System.out.println("\n" + ip + " was full. current cost " + totalEstimatedCost);
-								bestIP = ip;
-								jobCountOnBestIP = jobsForInstance.size();
-								
-								for(Job job : jobsForInstance.values()) {
-									totalEstimatedCost += job.getEstimatedCost();
-								}
-							}
-// 						}
+				// return first instance found with free threads
+				if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES) {
+					return ip;
+					
+				// FIXME calculate best possible based on some formula
+				} else if (jobsForInstance.size() < jobCountOnBestIP) {
+					System.out.println("\n" + ip + " was full. current cost " + totalEstimatedCost);
+					bestIP = ip;
+					jobCountOnBestIP = jobsForInstance.size();
+					
+					for(Job job : jobsForInstance.values()) {
+						totalEstimatedCost += job.getEstimatedCost();
 					}
 				}
 			}
-		}
-		
-		
-		// FIXME 
-		// If we come here it means that all the servers where fully loaded
-		// Now we have to select by job size or according to time.
-		
-		System.out.println("Total Estimate " + totalEstimatedCost);
-		// start a new instance based on a threashoold
-		if(totalEstimatedCost > ESTIMATED_COST_THRESHOLD) {
-			System.out.println("Starting a new instance...");
-			setDesiredCapacity(_instanceJobMap.size()+1);
-		}
+			
+			// FIXME 
+			// If we come here it means that all the servers where fully loaded
+			// Now we have to select by job size or according to time.
+			
+			System.out.println("->total " + totalEstimatedCost);
+			// start a new instance based on a threashoold
+			if(totalEstimatedCost > ESTIMATED_COST_THRESHOLD) {
+				System.out.println("Starting a new instance...");
+				setDesiredCapacity(_instanceJobMap.size()+1);
+			}
 			
         
         return bestIP;
