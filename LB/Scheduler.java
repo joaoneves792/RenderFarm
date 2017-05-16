@@ -28,10 +28,12 @@ public class Scheduler {
     private static final String AUTOSCALING_GROUP_NAME = "RENDERFARM_ASG";
     private static final int THREAD_COUNT_ON_INSTANCES = 2;
     private static final int AGS_POLL_RATE_SECONDS = 30;
-    private static final double ESTIMATED_COST_THRESHOLD = 30000; // FIXME
     private static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
+    private static final double NEW_INSTANCE_THRESHOLD = 25000; // FIXME
+    private static final double COST_PER_INSTANCE_THRESHOLD = 30000; // FIXME
 
+    
     private static ConcurrentHashMap<String, ConcurrentHashMap<String, Job>> _instanceJobMap = new ConcurrentHashMap<String, ConcurrentHashMap<String, Job>>();
     private static MetricsManager _metricsManager;
     private static ConcurrentHashMap<String, Long> _latestJobForInstance;
@@ -45,7 +47,7 @@ public class Scheduler {
                 .describeAutoScalingInstances()
                 .getAutoScalingInstances();
 		
-        /*Get the instance IDs of the instances in our autoscaling group*/
+        // get the instance IDs of the instances in our autoscaling group
         List<String> groupInstances = new LinkedList<>();
         for(AutoScalingInstanceDetails detail : details){
             if(detail.getAutoScalingGroupName().equals(AUTOSCALING_GROUP_NAME)) {
@@ -53,7 +55,8 @@ public class Scheduler {
             }
         }
         
-        /*Now get their public IPs*/
+        // FIXME when load balancer is an AWS image use internal IPs
+        // get the instances public IPs
         DescribeInstancesRequest describeRequest = new DescribeInstancesRequest();
         describeRequest.setInstanceIds(groupInstances);
         DescribeInstancesResult instances = _ec2Client.describeInstances(describeRequest);
@@ -65,6 +68,30 @@ public class Scheduler {
         }
         
         return IPs;
+    }
+    
+	
+    private static void pollIPsFromAGS() {
+        List<String> ipsInAGS = Scheduler.getGroupIPs();
+        
+        // Add ip's that are not in the group.
+        // This is the case where we have added a new instance.
+        for(String ip : ipsInAGS) {
+            if (ip != null && !_instanceJobMap.containsKey(ip)) {
+                _instanceJobMap.put(ip, new ConcurrentHashMap<String, Job> ());
+                System.out.println(cyan("\nAdded instance: ") + ip);
+            }
+        }
+        
+        // Check if IPs in the _instanceJobMap do not exist
+        // in the ASG. (This is the case where we have removed an instance.
+        for(String ip: _instanceJobMap.keySet()) {
+            if (!ipsInAGS.contains(ip)) {
+                _instanceJobMap.remove(ip);
+                System.out.println(cyan("\nRemoved instance: ") + ip);
+            }
+        }
+        
     }
     
     
@@ -79,12 +106,12 @@ public class Scheduler {
                 .withRegion(REGION)
                 .build();
                 
-        // Populate our instance map with the ips to the instances in our auto-scaling group.
+        // FIXME populate our instance map with the ips to the instances in our auto-scaling group.
         
         _metricsManager = new MetricsManager();
         _metricsManager.init();
         
-// 		setDesiredCapacity(1);
+// 		setDesiredCapacity(2);
     }
     
     
@@ -92,6 +119,7 @@ public class Scheduler {
     public static String getIpForJob(Job newJob) {
     
         //TODO this should be done periodically and not every time we receive a request
+        
         // Refresh instances before we select server.
         Scheduler.pollIPsFromAGS();
         
@@ -101,7 +129,7 @@ public class Scheduler {
 		String bestIP = "";
 		int jobCountOnBestIP = 9999;
 		double totalEstimatedCost = 0;
-		
+		System.out.println();
 		for(Map.Entry<String, ConcurrentHashMap<String, Job>> ipJobsKeyPair : _instanceJobMap.entrySet()) {
 			
 			String ip = ipJobsKeyPair.getKey();
@@ -113,15 +141,14 @@ public class Scheduler {
 				
 			// FIXME calculate best possible based on some formula
 			} else {
+				for(Job job : jobsForInstance.values()) {
+					totalEstimatedCost += job.getEstimatedCost();
+				}
+				System.out.println(red("At capacity: ") + italic(ip));
+				
 				if (jobsForInstance.size() < jobCountOnBestIP) {
 					bestIP = ip;
 					jobCountOnBestIP = jobsForInstance.size();
-					
-					for(Job job : jobsForInstance.values()) {
-						totalEstimatedCost += job.getEstimatedCost();
-					}
-					System.out.println(red("\nAt capacity: ") + ip);
-// 					System.out.println(red("\nAt capacity: ") + ip + "\tcurrent cost " + totalEstimatedCost);
 				}
 			}
 		}
@@ -131,11 +158,15 @@ public class Scheduler {
 		// If we come here it means that all the servers where fully loaded
 		// Now we have to select by job size or according to time.
 		
-		// start a new instance based on a threshoold
-		System.out.println(yellow("\nTotal Estimate: ") + totalEstimatedCost);
-		if(totalEstimatedCost > ESTIMATED_COST_THRESHOLD) {
-			System.out.println("Starting a new instance...");
-			setDesiredCapacity(_instanceJobMap.size()+1);
+		
+		// start a new instance based on a ration between the exceeding and a threshold
+		System.out.println(yellow("All instances full, exceeding cost estimate: ") + totalEstimatedCost);
+		if(totalEstimatedCost > _instanceJobMap.size() * NEW_INSTANCE_THRESHOLD) {
+			int incrementBy = (int) (totalEstimatedCost / NEW_INSTANCE_THRESHOLD) -1;
+			if(incrementBy > 0) {
+				System.out.println(cyan(italic("Starting a new instance...")));
+				setDesiredCapacity(_instanceJobMap.size() + incrementBy);
+			}
 		}
 		
         return bestIP;
@@ -163,30 +194,6 @@ public class Scheduler {
         }
     }
     
-
-    private static void pollIPsFromAGS() {
-        List<String> ipsInAGS = Scheduler.getGroupIPs();
-        
-        // Add ip's that are not in the group.
-        // This is the case where we have added a new instance.
-        for(String ip : ipsInAGS) {
-            if (ip != null && !_instanceJobMap.containsKey(ip)) {
-                _instanceJobMap.put(ip, new ConcurrentHashMap<String, Job> ());
-                System.out.println(cyan("\nAdded instance: ") + ip);
-            }
-        }
-        
-        // Check if some of the IPs in the _instanceJobMap does not exist
-        // in the ASG. (This is the case where we have removed an instance.
-        for(String ip: _instanceJobMap.keySet()) {
-            if (!ipsInAGS.contains(ip)) {
-                _instanceJobMap.remove(ip);
-                System.out.println(cyan("\nRemoved instance: ") + ip);
-            }
-        }
-        
-    }
-    
     
     private static void setDesiredCapacity(int capacity) {
         SetDesiredCapacityRequest desiredCapacity = new SetDesiredCapacityRequest()
@@ -195,7 +202,7 @@ public class Scheduler {
         _amazonAutoScalingClient.setDesiredCapacity(desiredCapacity);
     }
     
-
+    
     public static boolean allInstancesAreFull() {
         if (_instanceJobMap.size() == 0)
             return true;

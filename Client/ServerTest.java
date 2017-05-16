@@ -36,6 +36,7 @@ public class ServerTest {
 		// loop similar requets
 		for (int i = 0; i < 200; i=i+10) {
 			client.makeRequest(sem, "test05.txt", 400, 300, 400, 300, i, 0);
+			client.makeRequest(sem, "test05.txt", 400, 300, 400, 300, i, i);
 		}
 		
 		try {

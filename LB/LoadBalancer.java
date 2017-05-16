@@ -24,7 +24,7 @@ public class LoadBalancer {
         server.setExecutor(java.util.concurrent.Executors.newCachedThreadPool()); // creates a default executor
         Scheduler.init();
         server.start();
-        System.out.println("\nLoad Balancer ready!");
+        System.out.println("\nLoad Balancer" + green(" ready") + "!");
     }
     
 
@@ -79,6 +79,7 @@ public class LoadBalancer {
                 }
                 
                 System.out.println("\nServer @ " + ip + " failed to respond! Retrying...");
+                System.out.println("\n" + ip + italic(red(" failed to respond!") + " Retrying..."));
                 Thread.sleep(RETRY_INTERVAL);
                 
             } catch (IOException e) {
@@ -87,7 +88,7 @@ public class LoadBalancer {
                     connection.disconnect();
                     
                 try {
-                    System.out.println("\nServer @ " + ip + " failed to respond! Retrying...");
+//                     System.out.println("\nServer @ " + ip + " failed to respond! Retrying...");
                     Thread.sleep(RETRY_INTERVAL);
                     
                 }catch (InterruptedException ex){
@@ -104,7 +105,7 @@ public class LoadBalancer {
             }
         }
         
-        System.out.println("\nServer @ " + ip + " is dead!");
+        System.out.println("\n" + ip + italic(red(" is dead!")));
         if(null != connection)
             connection.disconnect();
             
@@ -130,7 +131,7 @@ public class LoadBalancer {
 			}
 			
 			// Create a new job. Add to scheduler
-			//The IP of the host to which we want to redirect the request
+			// The IP of the host to which we want to redirect the request
 			String ipForJob;
 			do {
 				ipForJob = Scheduler.scheduleJob(job);
@@ -143,7 +144,7 @@ public class LoadBalancer {
 			connection.setRequestProperty("Accept-Charset", charset);
 			
 			try {
-				System.out.println(green("\nSent job to: ") + ipForJob + italic("\tEstimated cost: ") + job.getEstimatedCost());
+				System.out.println(green("\nSent to: ") + ipForJob + italic("\tEstimated cost: ") + job.getEstimatedCost());
 // 				System.out.println("Sent job to: " + ipForJob);
 				InputStream response = connection.getInputStream();
 				ByteArrayOutputStream outputStream = new ByteArrayOutputStream();

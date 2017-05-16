@@ -42,7 +42,7 @@ public class Job {
 	
     
     public void stop() {
-//    		System.out.println("\nSTOP : " + jobId);
+// 		System.out.println("\nSTOP : " + jobId);
         this.jobEndedTime = new Date().getTime();
         this.jobIsDone = true;
     }
