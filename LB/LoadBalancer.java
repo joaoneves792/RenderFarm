@@ -12,17 +12,20 @@ import static java.net.HttpURLConnection.HTTP_OK;
 
 public class LoadBalancer {
 	
-    private static final String RENDER_RESOURCE = "/r.html";
-    private static final String TEST_RESOURCE = "/test";
-    private static final int LB_PORT = 8001;
-    private static final int WS_PORT = 8000;
+    public static final String RENDER_RESOURCE = "/r.html";
+    public static final String TEST_RESOURCE = "/test";
+    public static final int LB_PORT = 8001;
+    public static final int WS_PORT = 8000;
+
+    private static Scheduler _scheduler;
 
     public static void main(String[] args) throws Exception {
 		
         HttpServer server = HttpServer.create(new InetSocketAddress(LB_PORT), 0);
         server.createContext(RENDER_RESOURCE, new RenderHandler());
         server.setExecutor(java.util.concurrent.Executors.newCachedThreadPool()); // creates a default executor
-        Scheduler.init();
+        _scheduler = new Scheduler();
+        _scheduler.init();
         server.start();
         System.out.println("\nLoad Balancer ready!");
     }
@@ -77,7 +80,7 @@ public class LoadBalancer {
                     connection.disconnect();
                     return false;
                 }
-                
+
                 System.out.println("\nServer @ " + ip + " failed to respond! Retrying...");
                 Thread.sleep(RETRY_INTERVAL);
                 
@@ -93,23 +96,23 @@ public class LoadBalancer {
                 }catch (InterruptedException ex){
                     if(null != connection)
                         connection.disconnect();
-                    return true;
+                    return false;
                 }
                 
             } catch (InterruptedException e) {
                 if(null != connection)
                     connection.disconnect();
                     
-                return true;
+                return false;
             }
         }
         
         System.out.println("\nServer @ " + ip + " is dead!");
         if(null != connection)
             connection.disconnect();
-            
+
+        _scheduler.instanceFailure(ip);
         return true; //If all the retries failed to produce a 200 OK then the server must be dead
-        //TODO hook some code to remove this instance from our list (or try to reboot it)
     }
     
 
@@ -128,14 +131,16 @@ public class LoadBalancer {
 				os.close();
 				return;
 			}
-			
+
+
 			// Create a new job. Add to scheduler
 			//The IP of the host to which we want to redirect the request
 			String ipForJob;
 			do {
-				ipForJob = Scheduler.scheduleJob(job);
+				ipForJob = _scheduler.scheduleJob(job);
 			} while (isDead(ipForJob));
-			
+
+
 			String charset = java.nio.charset.StandardCharsets.UTF_8.name();
 			String query = t.getRequestURI().getQuery();
 			
@@ -160,7 +165,7 @@ public class LoadBalancer {
 				
 			} catch(IOException e) {
 				e.printStackTrace();
-				String response = String.valueOf(connection.getResponseCode());
+				String response = String.valueOf("EXCEPTION: " + connection.getResponseCode());
 				System.out.println(response);
 				t.sendResponseHeaders(200, response.length());
 				OutputStream os = t.getResponseBody();
@@ -169,7 +174,7 @@ public class LoadBalancer {
 			}
 
 			// Job finished. Update scheduler.
-			Scheduler.finishJob(job, ipForJob);
+			_scheduler.finishJob(job, ipForJob);
 
 		}
 	}

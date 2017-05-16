@@ -30,4 +30,4 @@ run: jdk-version-check
 	$(JAVA) $(JAVA_OPTIONS) -cp $(CLASSPATH) LoadBalancer
 	
 clean:
-	rm *.class
+	-rm *.class
