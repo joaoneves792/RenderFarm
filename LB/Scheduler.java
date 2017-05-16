@@ -115,14 +115,21 @@ public class Scheduler {
             for(String ipInAgs : ipsInAGS) {
                 final String ip = ipInAgs;//Hack
                 if (ip != null && !_instanceJobMap.containsKey(ip)) { //If instance is not in our map
+
+                    //Then check if there is a thread already looking into it
+                    boolean alreadyWaiting = false;
                     synchronized (_pendingBoot) {
                         for (String pendingIp : _pendingBoot)
                             if (pendingIp.equals(ip))
-                                return; //There is a thread already looking into it
+                                alreadyWaiting = true; //There is a thread already looking into it
                         _pendingBoot.add(ip);
                     }
+                    if(alreadyWaiting)
+                        continue;
+
+                    //If not then its our responsibility
                     Executor ex = Executors.newSingleThreadExecutor();
-                    ex.execute(new Runnable() { //Create a new thread to add it once it responds to http
+                    ex.execute(new Runnable() { //Create a new thread to add the instance once it responds to http
                         @Override
                         public void run(){
                             for(int retries=3; retries>0; retries--) {
