@@ -7,11 +7,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Semaphore;
 
 
-public class ServerTest {
+public class ServerTestSimple {
 	
     public static void main(String[] args) {
-		
-		final Semaphore sem = new Semaphore(99999, true);
+   		final Semaphore sem = new Semaphore(99999, true);
 		
     	String file;
 		int sc, sr, wc, wr;
@@ -33,10 +32,8 @@ public class ServerTest {
 		
 		Timer timer = Timer.start();
 		
-		// loop similar requets
-		for (int i = 0; i <= 100; i=i+10) {
-			client.makeRequest(sem, "test05.txt", 400, 300, 400, 300, i, 0);
-		}
+		// simple, single request
+		client.makeRequest(sem, "test05.txt", 400, 300, 400, 300, 0, 0);
 		
 		try {
 			// FIXME not working use "time make run instead"

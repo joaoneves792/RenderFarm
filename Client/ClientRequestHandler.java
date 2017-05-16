@@ -3,6 +3,8 @@ import java.net.URL;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 
+import java.util.concurrent.Semaphore;
+
 
 public class ClientRequestHandler {
 	
@@ -35,22 +37,41 @@ public class ClientRequestHandler {
 	}
 	
 	
-	public void makeRequest(String f, int sc, int sr, int wc, int wr, int coff, int roff) {
-		try {
-			URL url = new URL(_protocol + "://" + _host
-								+ "?" + getRequest(f, sc, sr, wc, wr, coff, roff));
-			System.out.println("\n-> " + url);
-			
-			String response = "";
-			System.out.print("<- ");
-			BufferedReader br = new BufferedReader(new InputStreamReader(url.openStream()));
-			while ((response = br.readLine()) != null) {
-				System.out.println(response);
+	public void makeRequest(Semaphore sem, String f, int sc, int sr, int wc, int wr, int coff, int roff) {
+		
+		new Thread( new Runnable() {
+			public void run() {
+				try {
+					sem.acquire();
+					
+					try {
+						URL url = new URL(_protocol + "://" + _host
+											+ "?" + getRequest(f, sc, sr, wc, wr, coff, roff));
+						
+						String response = "";
+// 						System.out.print("<- ");
+						
+						int size = 0;
+						BufferedReader br = new BufferedReader(new InputStreamReader(url.openStream()));
+						while ((response = br.readLine()) != null) {
+	// 		 				System.out.println(response);
+							size += response.length();
+						}
+						
+						System.out.println("\n-> " + url);
+						System.out.println("<- image returned (" + size + ")");
+						
+					} catch(Exception e) {
+						System.out.println(e.getMessage());
+					}
+					
+					sem.release();
+					
+				} catch(InterruptedException e) {
+					System.out.println(e.getMessage());
+				}
 			}
-			
-		} catch(Exception e) {
-			System.out.println(e.getMessage());
-		}
+		}).start();
 	}
 	
 	public String getRequest() {

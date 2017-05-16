@@ -7,11 +7,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Semaphore;
 
 
-public class ServerTest {
+public class ServerTestFull {
 	
     public static void main(String[] args) {
-		
-		final Semaphore sem = new Semaphore(99999, true);
+   		final Semaphore sem = new Semaphore(99999, true);
 		
     	String file;
 		int sc, sr, wc, wr;
@@ -33,9 +32,19 @@ public class ServerTest {
 		
 		Timer timer = Timer.start();
 		
-		// loop similar requets
-		for (int i = 0; i <= 100; i=i+10) {
-			client.makeRequest(sem, "test05.txt", 400, 300, 400, 300, i, 0);
+		// for every file, render a bigmak picture and then fractions of it
+		for (int i = 1; i <= 5; i++) {
+			
+			// generate the full sized scenne for a given file
+			file = "test0" + i + ".txt";
+			client.makeRequest(sem, file, width, height, width, height, coff, roff);
+			
+			// break the scenne into smaller chunks
+			for(coff = -500 ; coff < width/2 ; coff += 100) {
+				for(roff = -500 ; roff < height/2 ; roff += 100) {
+					client.makeRequest(sem, file, width, height, sc, sr, coff, roff);
+				}
+			}
 		}
 		
 		try {
