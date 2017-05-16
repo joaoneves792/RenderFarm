@@ -1,4 +1,5 @@
 import java.util.Date;
+import java.util.HashMap;
 import java.util.UUID;
 
 public class Job {
@@ -8,8 +9,8 @@ public class Job {
     private double estimatedCount = -1;
     private long jobStartedTime, jobEndedTime;
     private boolean jobIsDone;
-    
-    
+    private HashMap<String, Double> coefficientMap;
+
     public Job(String fileName, int wc, int wr, int sc, int sr, int coff, int roff) {
         this.jobId = UUID.randomUUID().toString();
         this.wc = wc;
@@ -20,6 +21,12 @@ public class Job {
         this.roff = roff;
         this.jobIsDone = false;
         this.fileName = fileName;
+        coefficientMap = new HashMap<>();
+        coefficientMap.put("test01.txt", 1.0);
+        coefficientMap.put("test01.txt", 1.95);
+        coefficientMap.put("test01.txt", 1.59);
+        coefficientMap.put("test01.txt", 7.66);
+        coefficientMap.put("test01.txt", 3.50);
     }
     
     
@@ -40,7 +47,6 @@ public class Job {
         this.jobIsDone = true;
     }
     
-    
     public boolean previousMetricsExists() {
         return this.estimatedCount != -1;
     }
@@ -48,12 +54,24 @@ public class Job {
     
     public double estimateCost(MetricsManager metricsManager) {
         long methodCalls = metricsManager.getMetrics(fileName, sc, sr, wc, wr, coff, roff);
-        if(methodCalls > 0) {
-			double cost = metricsManager.estimateCost(methodCalls);
-			estimatedCount = cost;
+
+        // If methodCalls does not exist for this job we have to approximate it.
+        if (methodCalls == -1) {
+            Double fileCoefficient = coefficientMap.get(fileName);
+
+            // Estimate metrics using regression formula
+            // If sc*sr and wc*wr is to small the formula will return a negative number. In this case
+            // the mc is and computing cost is so low that we can consider it to be 1.
+            long estimatedMc = (long) (((sc*sr) * 1.4 + (wc*wr) * 124 - 2621250) * fileCoefficient);
+            methodCalls = estimatedMc > 1 ? estimatedMc : 1;
+        }
+
+        if (methodCalls > 0) {
+            double cost = metricsManager.estimateCost(methodCalls);
+            estimatedCount = cost;
             return cost;
         }
-        
+
         return -1;
     }
     
