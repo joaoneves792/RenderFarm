@@ -20,8 +20,9 @@ public class Scheduler {
     private static final String REGION = "eu-west-1";
     private static final String AUTOSCALING_GROUP_NAME = "RENDERFARM_ASG";
     private static final int THREAD_COUNT_ON_INSTANCES = 2;
-    private static final double NEW_INSTANCE_THRESHOLD = 25000; // FIXME
-    private static final double COST_PER_INSTANCE_THRESHOLD = 30000; // FIXME
+
+    private static final int AGS_POLL_RATE_SECONDS = 30;
+    private static final double NEW_INSTANCE_THRESHOLD = 2; // FIXME
 
     
     
@@ -215,8 +216,10 @@ public class Scheduler {
         double cost = newJob.estimateCost(_metricsManager);
 
 		String bestIP = "";
-		int jobCountOnBestIP = 9999;
-		double totalEstimatedCost = 0;
+		int jobCountOnBestIP = 999999;
+		double costOnInstance = 0;
+		double costOnBestInstance = 9999999;
+		int totalRunningJobs = 0;
 		System.out.println();
 		for(Map.Entry<String, ConcurrentHashMap<String, Job>> ipJobsKeyPair : _instanceJobMap.entrySet()) {
 			String ip = ipJobsKeyPair.getKey();
@@ -226,17 +229,26 @@ public class Scheduler {
 			if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES) {
 				return ip;
 				
-			// FIXME calculate best possible based on some formula
 			} else {
+				costOnInstance = 0;
+				totalRunningJobs += jobsForInstance.size();
 				for(Job job : jobsForInstance.values()) {
-					totalEstimatedCost += job.getEstimatedCost();
+					costOnInstance += job.getEstimatedCost();
 				}
 				System.out.println(red("At capacity: ") + italic(ip));
 				
-				if (jobsForInstance.size() < jobCountOnBestIP) {
+				
+				if ((costOnInstance * jobsForInstance.size() + cost) < jobCountOnBestIP) {
 					bestIP = ip;
 					jobCountOnBestIP = jobsForInstance.size();
+					costOnBestInstance = costOnInstance;
 				}
+				
+// 				// FIXME calculate best possible based on some formula
+// 				if (jobsForInstance.size() < jobCountOnBestIP) {
+// 					bestIP = ip;
+// 					jobCountOnBestIP = jobsForInstance.size();
+// 				}
 			}
 		}
 		
@@ -247,11 +259,11 @@ public class Scheduler {
 		
 		
 		// start a new instance based on a ration between the exceeding and a threshold
-		System.out.println(yellow("All instances full, exceeding cost estimate: ") + totalEstimatedCost);
-		if(totalEstimatedCost > _instanceJobMap.size() * NEW_INSTANCE_THRESHOLD) {
-			int incrementBy = (int) (totalEstimatedCost / NEW_INSTANCE_THRESHOLD) -1;
+		System.out.println(yellow("All instances full, total jobs running: ") + totalRunningJobs);
+		if(totalRunningJobs > _instanceJobMap.size() * NEW_INSTANCE_THRESHOLD) {
+			int incrementBy = (int) (totalRunningJobs / THREAD_COUNT_ON_INSTANCES) - 1;
 			if(incrementBy > 0) {
-				System.out.println(cyan(italic("Starting a new instance...")));
+				System.out.println(italic(cyan("Starting ") + incrementBy + cyan(" new instances...")) + "\tDesired total: " + (_instanceJobMap.size() + incrementBy));
 				setDesiredCapacity(_instanceJobMap.size() + incrementBy);
 			}
 		}
@@ -330,11 +342,11 @@ public class Scheduler {
 
     
 
-    public static String red(String text) { return "\u001B[31m" + text + "\u001B[0m"; }
-    public static String green(String text) { return "\u001B[32m" + text + "\u001B[0m"; }
-	public static String yellow(String text) { return "\u001B[33m" + text + "\u001B[0m"; }
-	public static String cyan(String text) { return "\u001B[36m" + text + "\u001B[0m"; }
-	public static String italic(String text) { return "\u001B[03m" + text + "\u001B[0m"; }
+    public String red(String text) { return "\u001B[31m" + text + "\u001B[0m"; }
+    public String green(String text) { return "\u001B[32m" + text + "\u001B[0m"; }
+	public String yellow(String text) { return "\u001B[33m" + text + "\u001B[0m"; }
+	public String cyan(String text) { return "\u001B[36m" + text + "\u001B[0m"; }
+	public String italic(String text) { return "\u001B[03m" + text + "\u001B[0m"; }
 
     
 }
