@@ -253,24 +253,30 @@ public class Scheduler {
 		}
 		
 		
-		// FIXME 
-		// If we come here it means that all the servers where fully loaded
-		// Now we have to select by job size or according to time.
-		
-		
-		// start a new instance based on a ration between the exceeding and a threshold
-		System.out.println(yellow("All instances full, total jobs running: ") + totalRunningJobs);
-		if(totalRunningJobs > _instanceJobMap.size() * NEW_INSTANCE_THRESHOLD) {
-			int incrementBy = (int) (totalRunningJobs / THREAD_COUNT_ON_INSTANCES) - 1;
-			if(incrementBy > 0) {
-				System.out.println(italic(cyan("Starting ") + incrementBy + cyan(" new instances...")) + "\tDesired total: " + (_instanceJobMap.size() + incrementBy));
-				setDesiredCapacity(_instanceJobMap.size() + incrementBy);
-			}
-		}
+		scaleUp(totalRunningJobs, _instanceJobMap.size());
 		
         return bestIP;
     }
+    
+    
+    public void scaleUp(final int totalRunningJobs, final int totalInstances) {
+		
+		Executors.newSingleThreadExecutor().execute(new Runnable() {
+				@Override
+				public void run() {
+					// start a new instance based on a ration between the exceeding and a threshold
+					System.out.println(yellow("All instances full, total jobs running: ") + totalRunningJobs);
+					if(totalRunningJobs > totalInstances * NEW_INSTANCE_THRESHOLD) {
+						int incrementBy = (int) (totalRunningJobs / THREAD_COUNT_ON_INSTANCES) - 1;
+						if(incrementBy > 0) {
+							System.out.println(italic(cyan("Starting ") + incrementBy + cyan(" new instances...")) + "\tDesired total: " + (totalInstances + incrementBy));
+							setDesiredCapacity(totalInstances + incrementBy);
+						}
+					}
+				}
+			});
 
+    }
 
     public synchronized String scheduleJob(Job newJob) {
 		
