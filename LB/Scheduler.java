@@ -20,7 +20,6 @@ public class Scheduler {
     private static final String REGION = "eu-west-1";
     private static final String AUTOSCALING_GROUP_NAME = "RENDERFARM_ASG";
     private static final int THREAD_COUNT_ON_INSTANCES = 2;
-    private static final int AGS_POLL_RATE_SECONDS = 30;
     private static final double NEW_INSTANCE_THRESHOLD = 25000; // FIXME
     private static final double COST_PER_INSTANCE_THRESHOLD = 30000; // FIXME
 
@@ -300,8 +299,32 @@ public class Scheduler {
             if(jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES)
                 return false;
         }
-        
         return true;
+
+    }
+
+    public boolean shouldScaleDown() {
+        int emptyInstances = 0;
+
+        for(Map.Entry<String, ConcurrentHashMap<String, Job>> entry: _instanceJobMap.entrySet()) {
+            int jobsRunning = entry.getValue().size();
+            if(jobsRunning == 0)
+                emptyInstances++;
+        }
+
+        return emptyInstances > 1;
+
+    }
+
+    public boolean shouldScaleUp() {
+        int availableThreads = 0;
+        for(Map.Entry<String, ConcurrentHashMap<String, Job>> entry: _instanceJobMap.entrySet()) {
+            int jobsRunning = entry.getValue().size();
+            availableThreads += THREAD_COUNT_ON_INSTANCES - jobsRunning;
+        }
+
+        return availableThreads == 0;
+
     }
     
 
