@@ -53,19 +53,19 @@ public class MetricsManager {
     }
 
     //Assuming that whomever uses this sets sc and sr similar to wc and wr
-    static private double overlapRatio(int wcA, int wrA, int coffA, int roffA, int wcB, int wrB, int coffB, int roffB){
+    static private double overlapRatio(int scA, int srA, int coffA, int roffA, int scB, int srB, int coffB, int roffB){
         int XA1 = coffA;
         int YA1 = roffA;
-        int XA2 = XA1 + wcA;
-        int YA2 = YA1 + wrA;
+        int XA2 = XA1 + scA;
+        int YA2 = YA1 + srA;
 
         int XB1 = coffB;
         int YB1 = roffB;
-        int XB2 = XB1 + wcB;
-        int YB2 = YB1 + wrB;
+        int XB2 = XB1 + scB;
+        int YB2 = YB1 + srB;
 
-        double SA = wcA*wrA;
-        double SB = wcB*wrB;
+        double SA = scA*srA;
+        double SB = scB*srB;
 
         double SI = Math.max(0, Math.min(XA2, XB2) - Math.max(XA1, XB1)) * Math.max(0, Math.min(YA2, YB2) - Math.max(YA1, YB1));
 
@@ -76,13 +76,20 @@ public class MetricsManager {
 
     static public long getMetrics(String filename, int sc, int sr, int wc, int wr, int coff, int roff) {
         final double ACCEPT_OVERLAP_RATIO = 0.75;
+        final int SIMILAR_INTERVAL = 200;
         // 1. Should we only check metrics for the same file?
         // 2. If no metrics exists for current file, do we check the other files?
         ScanSpec scanSpec = new ScanSpec()
-                .withFilterExpression("fileName = :fileName")
+                .withFilterExpression("fileName = :fileName and "+
+                    "sc BETWEEN :scL AND :scH and "+
+                    "sr BETWEEN :srL AND :srH")
                 .withValueMap(
                         new ValueMap()
                                 .withString(":fileName", filename)
+                                .withInt(":scL", sc - SIMILAR_INTERVAL)
+                                .withInt(":scH", sc + SIMILAR_INTERVAL)
+                                .withInt(":srL", sr - SIMILAR_INTERVAL)
+                                .withInt(":srH", sr + SIMILAR_INTERVAL)
                 );
                 
         try {
@@ -93,20 +100,25 @@ public class MetricsManager {
             Iterator<Item> iter = items.iterator();
             while(iter.hasNext()) {
                 Item item = iter.next();
-                double overlap = overlapRatio(wc, wr, coff, roff, item.getInt("wc"),
-                        item.getInt("wr"), item.getInt("coff"), item.getInt("roff"));
+                double overlap = overlapRatio(sc, sr, coff, roff, item.getInt("sc"),
+                        item.getInt("sr"), item.getInt("coff"), item.getInt("roff"));
                 if(overlap > maxOverlap){
                     maxOverlap = overlap;
                     bestMatch = item;
                 }
             }
-            if(maxOverlap > ACCEPT_OVERLAP_RATIO && null != bestMatch)
-                return bestMatch.getLong("mc");
+            if(maxOverlap > ACCEPT_OVERLAP_RATIO && null != bestMatch){
+                long mc =  bestMatch.getLong("mc");
+                double windowSize = wc*wr;
+                double matchWindowSize = bestMatch.getInt("wc")*bestMatch.getInt("wr");
+                double ratio = windowSize/matchWindowSize;
+                return Math.round(mc*ratio);
+            }
         } catch (Exception e) {
             System.err.println("Unable to scan the table:");
             System.err.println(e.getMessage());
         }
-        
+
         return -1;
     }
 
@@ -114,7 +126,6 @@ public class MetricsManager {
     static public void saveMetrics(String fileName, int sc, int sr, int wc, int wr, int coff, int roff, long mc) {
 
         //Check for existing metrics
-        //TODO dont just eliminate duplicates, but also similar results
         long existingMetrics = MetricsManager.getMetrics(fileName, sc, sr, wc, wr, coff, roff);
         if(existingMetrics > -1) {
             return;
