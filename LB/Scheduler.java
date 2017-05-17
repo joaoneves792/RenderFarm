@@ -18,22 +18,21 @@ import com.amazonaws.services.ec2.model.Instance;
 public class Scheduler {
 
     private static final String REGION = "eu-west-1";
-    private static final String AUTOSCALING_GROUP_NAME = "RENDERFARM_ASG";
+    private final String AUTOSCALING_GROUP_NAME = "RENDERFARM_ASG";
     private static final int THREAD_COUNT_ON_INSTANCES = 2;
 
-    private static final int AGS_POLL_RATE_SECONDS = 30;
+    private static final int AUTOSCALING_GROUP_MIN_INSTANCES = 2;
     private static final double NEW_INSTANCE_THRESHOLD = 2; // FIXME
-
-    
-    
     private static final double ESTIMATED_COST_THRESHOLD = 30000; // FIXME
     private static final int INSTANCES_IP_CHECK_INTERVAL = 30; //In Seconds
-    private static final ScheduledExecutorService _scheduledExecutor = Executors.newScheduledThreadPool(1);
+    private static final int REMOVE_UNUSED_INSTANCES_INTERVAL = 120;//In Seconds
+    private static final ScheduledExecutorService _scheduledExecutor = Executors.newScheduledThreadPool(2);
 
-    private ConcurrentHashMap<String, ConcurrentHashMap<String, Job>> _instanceJobMap = new ConcurrentHashMap<String, ConcurrentHashMap<String, Job>>();
+    private final ConcurrentHashMap<String, ConcurrentHashMap<String, Job>> _instanceJobMap = new ConcurrentHashMap<String, ConcurrentHashMap<String, Job>>();
     private MetricsManager _metricsManager;
     private final List<String> _pendingBoot = new LinkedList<>();
-    private ConcurrentHashMap<String, Long> _latestJobForInstance;
+    private final List<String> _idleInstances = new LinkedList<>();
+    private final ConcurrentLinkedQueue<String> _terminatingInstances = new ConcurrentLinkedQueue<>();
     private AmazonAutoScaling _amazonAutoScalingClient;
     private AmazonEC2 _ec2Client;
 
@@ -93,7 +92,7 @@ public class Scheduler {
     
     
         _scheduledExecutor.scheduleAtFixedRate(new GetGroupIps(), 0, INSTANCES_IP_CHECK_INTERVAL, TimeUnit.SECONDS);
-
+        _scheduledExecutor.scheduleAtFixedRate(new RemoveUnusedInstances() ,REMOVE_UNUSED_INSTANCES_INTERVAL, REMOVE_UNUSED_INSTANCES_INTERVAL, TimeUnit.SECONDS);
 
 // 		setDesiredCapacity(1);
     }
@@ -103,19 +102,21 @@ public class Scheduler {
         public void run(){
             final List<String> ipsInAGS = getGroupIPs();
 
-            // Check if some of the IPs in the _instanceJobMap does not exist
-            // in the ASG. (This is the case where we have removed an instance.
-            for(String ip: _instanceJobMap.keySet()) {
-                if (!ipsInAGS.contains(ip)) {
-                    removeInstance(ip);
+            //Remove terminating instances that are no longer on the ASG
+            Iterator<String> iter = _terminatingInstances.iterator();
+            while(iter.hasNext()){
+                String currentIP = iter.next();
+                if(!ipsInAGS.contains(currentIP)){
+                    iter.remove();
                 }
             }
 
-            // Add ip's that are not in the group.
+            // Add ip's that are not in the map.
             // This is the case where we have added a new instance.
             for(String ipInAgs : ipsInAGS) {
                 final String ip = ipInAgs;//Hack
-                if (ip != null && !_instanceJobMap.containsKey(ip)) { //If instance is not in our map
+                if (ip != null && !_instanceJobMap.containsKey(ip) &&
+                        !_terminatingInstances.contains(ip)) { //If instance is not in our map and is not marked for termination
 
                     //Then check if there is a thread already looking into it
                     boolean alreadyWaiting = false;
@@ -168,6 +169,33 @@ public class Scheduler {
         }
     }
 
+    private class RemoveUnusedInstances implements Runnable{
+        @Override
+        public void run(){
+            synchronized (_instanceJobMap) {
+                while(_instanceJobMap.size() - _idleInstances.size() < AUTOSCALING_GROUP_MIN_INSTANCES
+                        && _idleInstances.size() > 0) {
+                    _idleInstances.remove(0);
+                }
+                for (String ip : _idleInstances) {
+                    _terminatingInstances.add(ip);
+                    terminateInstance(ip);
+                }
+
+                _idleInstances.clear();
+
+
+                for (Map.Entry<String, ConcurrentHashMap<String, Job>> entry : _instanceJobMap.entrySet()) {
+                    String ip = entry.getKey();
+                    ConcurrentHashMap<String, Job> jobMap = entry.getValue();
+                    if (jobMap.size() == 0) {
+                        _idleInstances.add(ip);
+                    }
+                }
+            }
+        }
+    }
+
     private synchronized void addInstance(String ip){
         if(!_instanceJobMap.containsKey(ip)) {
             _instanceJobMap.put(ip, new ConcurrentHashMap<String, Job>());
@@ -197,6 +225,18 @@ public class Scheduler {
             if(AGSip.equals(ip)){
                 reboot(ip);
             }
+        }
+
+    }
+
+    private void terminateInstance(String ip){
+        removeInstance(ip);
+        TerminateInstanceInAutoScalingGroupRequest terminateRequest = new TerminateInstanceInAutoScalingGroupRequest().withShouldDecrementDesiredCapacity(true);
+        HashMap<String, String> instances = getGroupInstances();
+        if(instances.containsKey(ip)) {
+            System.out.println(red("Terminating idle: ") + ip);
+            terminateRequest.setInstanceId(instances.get(ip));
+            _amazonAutoScalingClient.terminateInstanceInAutoScalingGroup(terminateRequest);
         }
 
     }
@@ -260,7 +300,6 @@ public class Scheduler {
     
     
     public void scaleUp(final int totalRunningJobs, final int totalInstances) {
-		
 		Executors.newSingleThreadExecutor().execute(new Runnable() {
 				@Override
 				public void run() {
@@ -278,15 +317,18 @@ public class Scheduler {
 
     }
 
-    public synchronized String scheduleJob(Job newJob) {
-		
-		String ip = getIpForJob(newJob);
-		
-		_instanceJobMap.get(ip).put(newJob.getJobId(), newJob);
-		
-		newJob.start();
-		
-        return ip;
+    public String scheduleJob(Job newJob) {
+		synchronized (_instanceJobMap) {
+            String ip = getIpForJob(newJob);
+
+            _instanceJobMap.get(ip).put(newJob.getJobId(), newJob);
+
+            newJob.start();
+
+            _idleInstances.remove(ip);
+
+            return ip;
+        }
     }
     
     

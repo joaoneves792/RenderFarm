@@ -10,7 +10,7 @@ compile:
 	javac *.java
 	
 clean:
-	rm *.class
+	-rm *.class
 	
 run:
 	java $(JAVA_OPTIONS) ServerTest
