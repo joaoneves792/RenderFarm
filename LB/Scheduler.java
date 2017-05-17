@@ -1,24 +1,14 @@
 
 import java.io.IOException;
-import java.io.StringReader;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-
-import com.amazonaws.AmazonClientException;
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 
 import com.amazonaws.services.autoscaling.AmazonAutoScaling;
 import com.amazonaws.services.autoscaling.AmazonAutoScalingClientBuilder;
 import com.amazonaws.services.autoscaling.model.*;
 
-import com.amazonaws.services.directconnect.model.Loa;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
 import com.amazonaws.services.ec2.model.*;
@@ -70,8 +60,9 @@ public class Scheduler {
         return instancesMap;
     }
 
-    private Set<String> getGroupIPs() {
-        return getGroupInstances().keySet();
+    private List<String> getGroupIPs() {
+        Set<String> keyset = getGroupInstances().keySet();
+        return new LinkedList<>(keyset);
     }
     
     
@@ -100,7 +91,7 @@ public class Scheduler {
     private class GetGroupIps implements Runnable{
         private int TIME_TO_BOOT = 60000;//1min
         public void run(){
-            final Set<String> ipsInAGS = getGroupIPs();
+            final List<String> ipsInAGS = getGroupIPs();
 
             // Check if some of the IPs in the _instanceJobMap does not exist
             // in the ASG. (This is the case where we have removed an instance.
@@ -140,6 +131,9 @@ public class Scheduler {
                                     if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
                                         connection.disconnect();
                                         addInstance(ip);
+                                        synchronized (_pendingBoot){
+                                            _pendingBoot.remove(ip);
+                                        }
                                         return;
                                     }
                                     throw new IOException("Bad http response");
@@ -151,6 +145,9 @@ public class Scheduler {
                                         //empty
                                     }
                                 }
+                            }
+                            synchronized (_pendingBoot){
+                                _pendingBoot.remove(ip);
                             }
                             reboot(ip); //If the machine does not respond for retries retries reboot it
                         }
@@ -183,8 +180,10 @@ public class Scheduler {
         removeInstance(ip);
 
         //reboot it if it is still running
-        Set<String> ipsInAGS = getGroupIPs();
+        List<String> ipsInAGS = getGroupIPs();
         for(String AGSip : ipsInAGS){
+            if(AGSip == null)
+                continue;
             if(AGSip.equals(ip)){
                 reboot(ip);
             }
@@ -196,7 +195,7 @@ public class Scheduler {
         TerminateInstanceInAutoScalingGroupRequest terminateRequest = new TerminateInstanceInAutoScalingGroupRequest().withShouldDecrementDesiredCapacity(false);
         HashMap<String, String> instances = getGroupInstances();
         if(instances.containsKey(ip)) {
-            System.out.println("Rebooting " + ip);
+            System.out.println(red("Rebooting: ") + ip);
             terminateRequest.setInstanceId(instances.get(ip));
             _amazonAutoScalingClient.terminateInstanceInAutoScalingGroup(terminateRequest);
         }
