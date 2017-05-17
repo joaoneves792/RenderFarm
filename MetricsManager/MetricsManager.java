@@ -52,37 +52,56 @@ public class MetricsManager {
         }
     }
 
+    //Assuming that whomever uses this sets sc and sr similar to wc and wr
+    static private double overlapRatio(int wcA, int wrA, int coffA, int roffA, int wcB, int wrB, int coffB, int roffB){
+        int XA1 = coffA;
+        int YA1 = roffA;
+        int XA2 = XA1 + wcA;
+        int YA2 = YA1 + wrA;
+
+        int XB1 = coffB;
+        int YB1 = roffB;
+        int XB2 = XB1 + wcB;
+        int YB2 = YB1 + wrB;
+
+        double SA = wcA*wrA;
+        double SB = wcB*wrB;
+
+        double SI = Math.max(0, Math.min(XA2, XB2) - Math.max(XA1, XB1)) * Math.max(0, Math.min(YA2, YB2) - Math.max(YA1, YB1));
+
+        double S = SA+SB-SI;
+
+        return SI/S;
+    }
+
     static public long getMetrics(String filename, int sc, int sr, int wc, int wr, int coff, int roff) {
+        final double ACCEPT_OVERLAP_RATIO = 0.75;
         // 1. Should we only check metrics for the same file?
         // 2. If no metrics exists for current file, do we check the other files?
         ScanSpec scanSpec = new ScanSpec()
-                .withFilterExpression("fileName = :fileName and " +
-                        "sc = :sc and " +
-                        "sr = :sr and " +
-                        "wc = :wc and " +
-                        "wr = :wr and " +
-                        "coff = :coff and " +
-                        "roff = :roff"
-                        )
+                .withFilterExpression("fileName = :fileName")
                 .withValueMap(
                         new ValueMap()
                                 .withString(":fileName", filename)
-                                .withInt(":sc", sc)
-                                .withInt(":sr", sr)
-                                .withInt(":wc", wc)
-                                .withInt(":wr", wr)
-                                .withInt(":coff", coff)
-                                .withInt(":roff", roff)
                 );
                 
         try {
             ItemCollection<ScanOutcome> items = metricsTable.scan(scanSpec);
+            double maxOverlap = 0.0;
+            Item bestMatch = null;
+
             Iterator<Item> iter = items.iterator();
-            if (iter.hasNext()) {
+            while(iter.hasNext()) {
                 Item item = iter.next();
-                return item.getLong("mc");
+                double overlap = overlapRatio(wc, wr, coff, roff, item.getInt("wc"),
+                        item.getInt("wr"), item.getInt("coff"), item.getInt("roff"));
+                if(overlap > maxOverlap){
+                    maxOverlap = overlap;
+                    bestMatch = item;
+                }
             }
-			
+            if(maxOverlap > ACCEPT_OVERLAP_RATIO && null != bestMatch)
+                return bestMatch.getLong("mc");
         } catch (Exception e) {
             System.err.println("Unable to scan the table:");
             System.err.println(e.getMessage());

@@ -213,7 +213,7 @@ public class Scheduler {
 
     public String getIpForJob(Job newJob) {
         //Get the estimated cost for running this job
-        //double cost = newJob.estimateCost(_metricsManager);
+        double cost = newJob.estimateCost(_metricsManager);
 
 		String bestIP = "";
 		int jobCountOnBestIP = 9999;
