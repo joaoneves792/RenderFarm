@@ -64,7 +64,8 @@ public class Job {
             // If sc*sr and wc*wr is to small the formula will return a negative number. In this case
             // the mc is and computing cost is so low that we can consider it to be 1.
             double estimatedMc =  (((sc*sr) * 1.4 + (wc*wr) * 124 - 2621250) * fileCoefficient);
-            _estimatedCount = (estimatedMc > 1) ? estimatedMc : 1;
+            double cost = metricsManager.estimateCost(Math.round(estimatedMc));
+            _estimatedCount = cost;
             return _estimatedCount;
             
         } else {
