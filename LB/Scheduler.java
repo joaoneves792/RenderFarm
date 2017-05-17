@@ -1,16 +1,9 @@
 
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.*;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-
-import com.amazonaws.AmazonClientException;
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.profile.ProfileCredentialsProvider;
+import java.util.concurrent.*;
 
 import com.amazonaws.services.autoscaling.AmazonAutoScaling;
 import com.amazonaws.services.autoscaling.AmazonAutoScalingClientBuilder;
@@ -28,26 +21,30 @@ public class Scheduler {
     private static final String AUTOSCALING_GROUP_NAME = "RENDERFARM_ASG";
     private static final int THREAD_COUNT_ON_INSTANCES = 2;
     private static final int AGS_POLL_RATE_SECONDS = 30;
-    private static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-
     private static final double NEW_INSTANCE_THRESHOLD = 25000; // FIXME
     private static final double COST_PER_INSTANCE_THRESHOLD = 30000; // FIXME
 
     
-    private static ConcurrentHashMap<String, ConcurrentHashMap<String, Job>> _instanceJobMap = new ConcurrentHashMap<String, ConcurrentHashMap<String, Job>>();
-    private static MetricsManager _metricsManager;
-    private static ConcurrentHashMap<String, Long> _latestJobForInstance;
-    private static AmazonAutoScaling _amazonAutoScalingClient;
-    private static AmazonEC2 _ec2Client;
     
-    
-    private static List<String> getGroupIPs() {
-        List<String> IPs = new LinkedList<>();
+    private static final double ESTIMATED_COST_THRESHOLD = 30000; // FIXME
+    private static final int INSTANCES_IP_CHECK_INTERVAL = 30; //In Seconds
+    private static final ScheduledExecutorService _scheduledExecutor = Executors.newScheduledThreadPool(1);
+
+    private ConcurrentHashMap<String, ConcurrentHashMap<String, Job>> _instanceJobMap = new ConcurrentHashMap<String, ConcurrentHashMap<String, Job>>();
+    private MetricsManager _metricsManager;
+    private final List<String> _pendingBoot = new LinkedList<>();
+    private ConcurrentHashMap<String, Long> _latestJobForInstance;
+    private AmazonAutoScaling _amazonAutoScalingClient;
+    private AmazonEC2 _ec2Client;
+
+
+    private HashMap<String, String> getGroupInstances(){
+        HashMap<String, String> instancesMap = new HashMap<>();
         List<AutoScalingInstanceDetails> details = _amazonAutoScalingClient
                 .describeAutoScalingInstances()
                 .getAutoScalingInstances();
-		
-        // get the instance IDs of the instances in our autoscaling group
+
+        /*Get the instance IDs of the instances in our autoscaling group*/
         List<String> groupInstances = new LinkedList<>();
         for(AutoScalingInstanceDetails detail : details){
             if(detail.getAutoScalingGroupName().equals(AUTOSCALING_GROUP_NAME)) {
@@ -57,45 +54,27 @@ public class Scheduler {
         
         // FIXME when load balancer is an AWS image use internal IPs
         // get the instances public IPs
+
+        /*Now get their public IPs*/
         DescribeInstancesRequest describeRequest = new DescribeInstancesRequest();
         describeRequest.setInstanceIds(groupInstances);
         DescribeInstancesResult instances = _ec2Client.describeInstances(describeRequest);
         List<Reservation> reservations = instances.getReservations();
         for(Reservation r : reservations){
             for(Instance i : r.getInstances()){
-                IPs.add(i.getPublicIpAddress());
+                instancesMap.put(i.getPublicIpAddress(), i.getInstanceId());
             }
         }
-        
-        return IPs;
+        return instancesMap;
+    }
+
+    private List<String> getGroupIPs() {
+        Set<String> keyset = getGroupInstances().keySet();
+        return new LinkedList<>(keyset);
     }
     
-	
-    private static void pollIPsFromAGS() {
-        List<String> ipsInAGS = Scheduler.getGroupIPs();
-        
-        // Add ip's that are not in the group.
-        // This is the case where we have added a new instance.
-        for(String ip : ipsInAGS) {
-            if (ip != null && !_instanceJobMap.containsKey(ip)) {
-                _instanceJobMap.put(ip, new ConcurrentHashMap<String, Job> ());
-                System.out.println(cyan("\nAdded instance: ") + ip);
-            }
-        }
-        
-        // Check if IPs in the _instanceJobMap do not exist
-        // in the ASG. (This is the case where we have removed an instance.
-        for(String ip: _instanceJobMap.keySet()) {
-            if (!ipsInAGS.contains(ip)) {
-                _instanceJobMap.remove(ip);
-                System.out.println(cyan("\nRemoved instance: ") + ip);
-            }
-        }
-        
-    }
-    
-    
-    public static void init() {
+
+    public void init() {
         _amazonAutoScalingClient = AmazonAutoScalingClientBuilder
                 .standard()
                 .withRegion(REGION)
@@ -110,28 +89,137 @@ public class Scheduler {
         
         _metricsManager = new MetricsManager();
         _metricsManager.init();
-        
-// 		setDesiredCapacity(2);
+    
+    
+    
+        _scheduledExecutor.scheduleAtFixedRate(new GetGroupIps(), 0, INSTANCES_IP_CHECK_INTERVAL, TimeUnit.SECONDS);
+
+
+// 		setDesiredCapacity(1);
     }
-    
-    
-    
-    public static String getIpForJob(Job newJob) {
-    
-        //TODO this should be done periodically and not every time we receive a request
-        
-        // Refresh instances before we select server.
-        Scheduler.pollIPsFromAGS();
-        
+
+    private class GetGroupIps implements Runnable{
+        private int TIME_TO_BOOT = 60000;//1min
+        public void run(){
+            final List<String> ipsInAGS = getGroupIPs();
+
+            // Check if some of the IPs in the _instanceJobMap does not exist
+            // in the ASG. (This is the case where we have removed an instance.
+            for(String ip: _instanceJobMap.keySet()) {
+                if (!ipsInAGS.contains(ip)) {
+                    removeInstance(ip);
+                }
+            }
+
+            // Add ip's that are not in the group.
+            // This is the case where we have added a new instance.
+            for(String ipInAgs : ipsInAGS) {
+                final String ip = ipInAgs;//Hack
+                if (ip != null && !_instanceJobMap.containsKey(ip)) { //If instance is not in our map
+
+                    //Then check if there is a thread already looking into it
+                    boolean alreadyWaiting = false;
+                    synchronized (_pendingBoot) {
+                        for (String pendingIp : _pendingBoot)
+                            if (pendingIp.equals(ip))
+                                alreadyWaiting = true; //There is a thread already looking into it
+                        _pendingBoot.add(ip);
+                    }
+                    if(alreadyWaiting)
+                        continue;
+
+                    //If not then its our responsibility
+                    Executor ex = Executors.newSingleThreadExecutor();
+                    ex.execute(new Runnable() { //Create a new thread to add the instance once it responds to http
+                        @Override
+                        public void run(){
+                            for(int retries=3; retries>0; retries--) {
+                                try {
+                                    HttpURLConnection connection = (HttpURLConnection) new URL("http", ip,
+                                            LoadBalancer.WS_PORT, LoadBalancer.TEST_RESOURCE).openConnection();
+                                    connection.setConnectTimeout(TIME_TO_BOOT);
+                                    if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                                        connection.disconnect();
+                                        addInstance(ip);
+                                        synchronized (_pendingBoot){
+                                            _pendingBoot.remove(ip);
+                                        }
+                                        return;
+                                    }
+                                    throw new IOException("Bad http response");
+                                } catch (IOException e) {
+                                    try {
+                                        Thread.sleep(TIME_TO_BOOT);
+                                        //If the connection fails try sleeping for TIME_TO_BOOT and then try again
+                                    }catch (InterruptedException ex){
+                                        //empty
+                                    }
+                                }
+                            }
+                            synchronized (_pendingBoot){
+                                _pendingBoot.remove(ip);
+                            }
+                            reboot(ip); //If the machine does not respond for retries retries reboot it
+                        }
+                    });
+                }
+            }
+
+        }
+    }
+
+    private synchronized void addInstance(String ip){
+        if(!_instanceJobMap.containsKey(ip)) {
+            _instanceJobMap.put(ip, new ConcurrentHashMap<String, Job>());
+            System.out.println(cyan("\nAdded instance: ") + ip);
+        }
+    }
+
+    private synchronized ConcurrentHashMap<String, Job> removeInstance(String ip){
+        ConcurrentHashMap<String, Job> removedInstance = null;
+        if(_instanceJobMap.containsKey(ip)) {
+            removedInstance = _instanceJobMap.get(ip);
+            _instanceJobMap.remove(ip);
+        }
+        System.out.println(cyan("\nRemoved instance: ") + ip);
+        return removedInstance;
+    }
+
+    public void instanceFailure(String ip){
+        //Remove the instance from our map
+        removeInstance(ip);
+
+        //reboot it if it is still running
+        List<String> ipsInAGS = getGroupIPs();
+        for(String AGSip : ipsInAGS){
+            if(AGSip == null)
+                continue;
+            if(AGSip.equals(ip)){
+                reboot(ip);
+            }
+        }
+
+    }
+
+    private void reboot(String ip){
+        TerminateInstanceInAutoScalingGroupRequest terminateRequest = new TerminateInstanceInAutoScalingGroupRequest().withShouldDecrementDesiredCapacity(false);
+        HashMap<String, String> instances = getGroupInstances();
+        if(instances.containsKey(ip)) {
+            System.out.println(red("Rebooting: ") + ip);
+            terminateRequest.setInstanceId(instances.get(ip));
+            _amazonAutoScalingClient.terminateInstanceInAutoScalingGroup(terminateRequest);
+        }
+    }
+
+    public String getIpForJob(Job newJob) {
         //Get the estimated cost for running this job
-        double cost = newJob.estimateCost(_metricsManager);
-        
+        //double cost = newJob.estimateCost(_metricsManager);
+
 		String bestIP = "";
 		int jobCountOnBestIP = 9999;
 		double totalEstimatedCost = 0;
 		System.out.println();
 		for(Map.Entry<String, ConcurrentHashMap<String, Job>> ipJobsKeyPair : _instanceJobMap.entrySet()) {
-			
 			String ip = ipJobsKeyPair.getKey();
 			ConcurrentHashMap<String, Job> jobsForInstance = ipJobsKeyPair.getValue();
 			
@@ -173,7 +261,7 @@ public class Scheduler {
     }
 
 
-    public static synchronized String scheduleJob(Job newJob) {
+    public synchronized String scheduleJob(Job newJob) {
 		
 		String ip = getIpForJob(newJob);
 		
@@ -185,7 +273,7 @@ public class Scheduler {
     }
     
     
-    public static  void finishJob(Job job, String instanceIp) {
+    public  void finishJob(Job job, String instanceIp) {
         job.stop();
 		
 		ConcurrentHashMap<String, Job> jobsForInstance = _instanceJobMap.get(instanceIp);
@@ -194,16 +282,16 @@ public class Scheduler {
         }
     }
     
-    
-    private static void setDesiredCapacity(int capacity) {
+
+    private void setDesiredCapacity(int capacity) {
         SetDesiredCapacityRequest desiredCapacity = new SetDesiredCapacityRequest()
                     .withAutoScalingGroupName(AUTOSCALING_GROUP_NAME)
                     .withDesiredCapacity(capacity);
         _amazonAutoScalingClient.setDesiredCapacity(desiredCapacity);
     }
     
-    
-    public static boolean allInstancesAreFull() {
+
+    public boolean allInstancesAreFull() {
         if (_instanceJobMap.size() == 0)
             return true;
             
@@ -219,10 +307,6 @@ public class Scheduler {
 
     
 
-    public static void main(String[] args) {
-        Scheduler.init();
-    }
-    
     public static String red(String text) { return "\u001B[31m" + text + "\u001B[0m"; }
     public static String green(String text) { return "\u001B[32m" + text + "\u001B[0m"; }
 	public static String yellow(String text) { return "\u001B[33m" + text + "\u001B[0m"; }
