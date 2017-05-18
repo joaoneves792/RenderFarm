@@ -145,6 +145,7 @@ public class LoadBalancer {
 						ipForJob = _scheduler.waitForBootAndSchedule();
 					}
 				} catch(InterruptedException e) {
+					// print error and retry
 					System.out.println(red("failed to schedule job: ") + e.getMessage());
 				}
 				

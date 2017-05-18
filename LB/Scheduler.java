@@ -26,7 +26,7 @@ public class Scheduler {
     private final String AUTOSCALING_GROUP_NAME = "RENDERFARM_ASG";
     private static final int THREAD_COUNT_ON_INSTANCES = 2;
 
-    private static final int AUTOSCALING_GROUP_MIN_INSTANCES = 0;
+    private static final int AUTOSCALING_GROUP_MIN_INSTANCES = 2;
     private static final double NEW_INSTANCE_THRESHOLD = 1.5; // FIXME
     
     private static final double ESTIMATED_COST_THRESHOLD = 30000; // FIXME
@@ -101,7 +101,7 @@ public class Scheduler {
         _scheduledExecutor.scheduleAtFixedRate(new GetGroupIps(), 0, INSTANCES_IP_CHECK_INTERVAL, TimeUnit.SECONDS);
         _scheduledExecutor.scheduleAtFixedRate(new RemoveUnusedInstances() ,REMOVE_UNUSED_INSTANCES_INTERVAL, REMOVE_UNUSED_INSTANCES_INTERVAL, TimeUnit.SECONDS);
 
-// 		setDesiredCapacity(1);
+		setDesiredCapacity(2);
     }
 
     private class GetGroupIps implements Runnable{
@@ -211,6 +211,7 @@ public class Scheduler {
 				ConcurrentHashMap<String, Job> jobMap = new ConcurrentHashMap<String, Job>();
 				_instanceJobMap.put(ip, jobMap);
 			}
+			System.out.println(cyan("\nAdded instance: ") + ip);
 			
 		} else {
 			try {
@@ -223,9 +224,10 @@ public class Scheduler {
 					_instanceJobMap.put(ip, jobMap);
 				}
 			}
+			System.out.println(cyan("\nAdded instance " + italic("(jobs waiting)") + ": ") + ip);
+			
 		}
 		
-		System.out.println(cyan("\nAdded instance: ") + ip);
     }
 
     private synchronized ConcurrentHashMap<String, Job> removeInstance(String ip){
@@ -283,7 +285,7 @@ public class Scheduler {
 		String bestIP = "";
 		int jobCountOnBestIP = 999999;
 		double costOnInstance = 0;
-		double costOnBestInstance = 9999999;
+		double costOnBestInstance = 999999;
 		int totalRunningJobs = 0;
 		System.out.println();
 		for(Map.Entry<String, ConcurrentHashMap<String, Job>> ipJobsKeyPair : _instanceJobMap.entrySet()) {
@@ -305,28 +307,30 @@ public class Scheduler {
 					costOnInstance += job.getEstimatedCost();
 				}
 				
-// 				if ((costOnInstance * jobsForInstance.size() + cost) < costOnBestInstance) {
-// 					bestIP = ip;
-// 					jobCountOnBestIP = jobsForInstance.size();
-// 					costOnBestInstance = costOnInstance;
-// 				}
-				
-				// FIXME calculate best possible based on some formula
-				if (jobsForInstance.size() < jobCountOnBestIP) {
+				if ((costOnInstance * jobsForInstance.size() + cost) < costOnBestInstance) {
 					bestIP = ip;
 					jobCountOnBestIP = jobsForInstance.size();
+					costOnBestInstance = costOnInstance;
 				}
+				
+// 				// FIXME calculate best possible based on some formula
+// 				if (jobsForInstance.size() < jobCountOnBestIP) {
+// 					bestIP = ip;
+// 					jobCountOnBestIP = jobsForInstance.size();
+// 				}
 			}
+		}
+			
+		// FIXME also take into consideration costOnBestInstance
+		if (cost > QUEUE_JOB_THRESHOLD && jobCountOnBestIP > 0) {
+			bestIP = QUEUED;
+			totalRunningJobs += _queuedJobs.size();
 		}
 		
 		int incrementTo = scaleUpTo(totalRunningJobs, _instanceJobMap.size());
 		if (incrementTo > 0) {
 			System.out.println(italic(cyan("Starting ") + (incrementTo - _instanceJobMap.size()) + cyan(" new instances...")) + "\tDesired total: " + incrementTo);
 			setDesiredCapacity(incrementTo);
-			
-			// FIXME also take into consideration costOnBestInstance
-			if (cost > QUEUE_JOB_THRESHOLD)
-				return QUEUED;
 		}
 		
         return bestIP;
@@ -334,25 +338,16 @@ public class Scheduler {
     
     
     public int scaleUpTo(final int totalRunningJobs, final int totalInstances) {
+		System.out.println(yellow("All ") + totalInstances + yellow(" instances are full, total jobs running: ") + totalRunningJobs);
 		
 		int desired = -1;
 		
-// 		Executors.newSingleThreadExecutor().execute(new Runnable() {
-// 			@Override
-// 			public void run() {
-				// start a new instance based on a ration between the exceeding and a threshold
-				System.out.println(yellow("All instances full, total jobs running: ") + totalRunningJobs);
-				System.out.println("div "+(totalRunningJobs / totalInstances));
-				
-				
-				if (totalRunningJobs / totalInstances  >= NEW_INSTANCE_THRESHOLD) {
-					desired = ((int) (totalRunningJobs / THREAD_COUNT_ON_INSTANCES)) + totalInstances;
-					
-				} else {
-					desired = -1;
-				}
-// 			}
-// 		});
+		double ratio = ((totalRunningJobs + _queuedJobs.size()) / (totalInstances * THREAD_COUNT_ON_INSTANCES));
+// 		System.out.println("div-ratio " + ratio);
+		
+		if (ratio  >= NEW_INSTANCE_THRESHOLD) {
+			desired = (int) Math.ceil(ratio * THREAD_COUNT_ON_INSTANCES);
+		}
 		
 		// something failed,
 		// 0 or lower will have the job just sent to an instance
@@ -365,7 +360,7 @@ public class Scheduler {
             
 			// job will wait for a new instance to boot
             if (ip.equals(QUEUED)) {
-				System.out.println(italic(yellow("-> queued: ")) + newJob.toString());
+				System.out.println(italic(yellow("-> queued: ")) + italic(newJob.toString()));
 				_queuedJobs.put(newJob);
 				
 			} else {
@@ -382,22 +377,41 @@ public class Scheduler {
     
     public String waitForBootAndSchedule() throws InterruptedException {
 		String newIP = _freshInstances.take();
+		ConcurrentHashMap<String, Job> jobMap;
 		
 		if(!_instanceJobMap.containsKey(newIP)) {
-			ConcurrentHashMap<String, Job> jobMap = new ConcurrentHashMap<String, Job>();
-			_instanceJobMap.put(newIP, jobMap);
+			jobMap = new ConcurrentHashMap<String, Job>();
 			
-			for (int i = 0; i < THREAD_COUNT_ON_INSTANCES; i++) {
-				if (_queuedJobs.isEmpty()) {
-					break;
-					
-				} else {				
-					Job job = _queuedJobs.take();
-					System.out.println(italic(yellow("<- from queue: ")) + newJob.toString());
-					jobMap.put(job.getJobId(), job);
-				}
+			if (!_queuedJobs.isEmpty()) {			
+				Job job = _queuedJobs.take();
+				System.out.println(italic(yellow("<- from queue: ")) + italic(job.toString()));
+				jobMap.put(job.getJobId(), job);
 			}
+			
+			synchronized (_instanceJobMap) {
+				_instanceJobMap.put(newIP, jobMap);
+			}
+			
+			// because it's a new instance try to fetch a second job
+			if (_queuedJobs.size() > 0)
+				_freshInstances.put(newIP);
+			
+		} else {
+			jobMap = _instanceJobMap.get(newIP);
+			
+			if (!_queuedJobs.isEmpty()) {			
+				Job job = _queuedJobs.take();
+				System.out.println(italic(yellow("<- from queue: ")) + italic(job.toString()));
+				jobMap.put(job.getJobId(), job);
+			}
+			
+			synchronized (_instanceJobMap) {
+				_instanceJobMap.put(newIP, jobMap);
+			}
+			
 		}
+		
+		_idleInstances.remove(newIP);
 		
 		return newIP;
     }
@@ -422,7 +436,7 @@ public class Scheduler {
             _amazonAutoScalingClient.setDesiredCapacity(desiredCapacity);
             
         }catch (AmazonAutoScalingException e){
-            System.out.println(red("AutoScaling exception: ") + e.getMessage());
+            System.out.println(red("AutoScaling exception: ") + e.getMessage() + "\n");
         }
     }
 
@@ -431,6 +445,37 @@ public class Scheduler {
 	public String yellow(String text) { return "\u001B[33m" + text + "\u001B[0m"; }
 	public String cyan(String text) { return "\u001B[36m" + text + "\u001B[0m"; }
 	public String italic(String text) { return "\u001B[03m" + text + "\u001B[0m"; }
+	
+	
+	
+	
+	
+// 	public int scaleUpTo(final int totalRunningJobs, final int totalInstances) {
+// 		int desired = -1;
+// 		
+// 		Executors.newSingleThreadExecutor().execute(new Runnable() {
+// 			@Override
+// 			public void run() {
+// 				start a new instance based on a ration between the exceeding and a threshold
+// 				System.out.println(yellow("All instances full, total jobs running: ") + totalRunningJobs);
+// 				
+// 				double ratio = ((totalRunningJobs + _queuedJobs.size()) / totalInstances);
+// 				System.out.println("div-ratio " + ratio);
+// 				
+// 				if (ratio  >= NEW_INSTANCE_THRESHOLD) {
+// 					
+// 					desired = (int) Math.ceil(ratio * THREAD_COUNT_ON_INSTANCES) - totalInstances;
+// 					
+// 					desired = ((int) (totalRunningJobs / THREAD_COUNT_ON_INSTANCES)) + totalInstances;
+// 					
+// 				}
+// 			}
+// 		});
+// 		
+// 		// something failed,
+// 		// 0 or lower will have the job just sent to an instance
+// 		return desired;
+//     }
 
     
 }
