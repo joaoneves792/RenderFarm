@@ -343,10 +343,14 @@ public class Scheduler {
     
 
     private void setDesiredCapacity(int capacity) {
-        SetDesiredCapacityRequest desiredCapacity = new SetDesiredCapacityRequest()
-                    .withAutoScalingGroupName("RENDERFARM_ASG")
+        try {
+            SetDesiredCapacityRequest desiredCapacity = new SetDesiredCapacityRequest()
+                    .withAutoScalingGroupName(AUTOSCALING_GROUP_NAME)
                     .withDesiredCapacity(capacity);
-        _amazonAutoScalingClient.setDesiredCapacity(desiredCapacity);
+            _amazonAutoScalingClient.setDesiredCapacity(desiredCapacity);
+        }catch (AmazonAutoScalingException e){
+            System.out.println("AutoScaling exception: " + e.getMessage());
+        }
     }
 
     public String red(String text) { return "\u001B[31m" + text + "\u001B[0m"; }
