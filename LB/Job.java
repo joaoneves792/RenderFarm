@@ -33,16 +33,20 @@ public class Job {
     public String getJobId() {
         return _jobId;
     }
+     
+	public String toString() {
+        return fileName + ", " + sc + ", " + wc + ", " + wr + ", " + sr + ", " + coff + ", " + roff;
+    }
     
     
 	public void start() {
-// 		System.out.println("\nSTART : " + _jobId);
+		System.out.println("\n\u001B[03m START \u001B[0m" + ": " + toString());
 		_jobStartedTime = new Date().getTime();
 	}
 	
     
     public void stop() {
-// 		System.out.println("\nSTOP : " + _jobId);
+		System.out.println("\n\u001B[03m STOP \u001B[0m" + ": " + toString());
         _jobEndedTime = new Date().getTime();
         _jobIsDone = true;
     }

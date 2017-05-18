@@ -33,11 +33,12 @@ public class ServerTest {
 		
 		Timer timer = Timer.start();
 		
+			client.makeRequest(sem, "test05.txt", 20000, 15000, 3250, 2500, 5010, 6510);
 		// loop similar requets
 		for (int i = 10; i < 100; i=i+10) {
 // 			client.makeRequest(sem, "test05.txt", i+1, 1, 4, 300+i, i, i);
-			client.makeRequest(sem, "test05.txt", 20000, 15000, 3250, 2500, 5000+i, 6500+i);
-// 			client.makeRequest(sem, "test01.txt", 800, 450, 650, 300, 0, 0);
+// 			client.makeRequest(sem, "test01.txt", 800, 450, 650+i, 300, i, i);
+// 			client.makeRequest(sem, "test05.txt", 20000, 15000, 3250, 2500, 5000+i, 6500+i);
 		}
 		
 		try {

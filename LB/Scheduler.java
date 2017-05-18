@@ -21,7 +21,7 @@ public class Scheduler {
     private final String AUTOSCALING_GROUP_NAME = "RENDERFARM_ASG";
     private static final int THREAD_COUNT_ON_INSTANCES = 2;
 
-    private static final int AUTOSCALING_GROUP_MIN_INSTANCES = 2;
+    private static final int AUTOSCALING_GROUP_MIN_INSTANCES = 0;
     private static final double NEW_INSTANCE_THRESHOLD = 2; // FIXME
     private static final double ESTIMATED_COST_THRESHOLD = 30000; // FIXME
     private static final int INSTANCES_IP_CHECK_INTERVAL = 30; //In Seconds
@@ -167,7 +167,7 @@ public class Scheduler {
         }
     }
 
-    private class RemoveUnusedInstances implements Runnable{
+    private class RemoveUnusedInstances implements Runnable {
         @Override
         public void run(){
             synchronized (_instanceJobMap) {
@@ -263,8 +263,6 @@ public class Scheduler {
 			String ip = ipJobsKeyPair.getKey();
 			ConcurrentHashMap<String, Job> jobsForInstance = ipJobsKeyPair.getValue();
 			
-			System.out.println("-> derp.");
-			
 			// return first instance found with free threads
 			if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES) {
 				return ip;
@@ -275,7 +273,9 @@ public class Scheduler {
 				for(Job job : jobsForInstance.values()) {
 					costOnInstance += job.getEstimatedCost();
 				}
-				System.out.println(red("At capacity: ") + italic(ip));
+				
+				
+				System.out.println(red("At capacity: ") + italic(ip) + "estimated cost on instance: " + italic(""+costOnInstance));
 				
 				
 				if ((costOnInstance * jobsForInstance.size() + cost) < costOnBestInstance) {
@@ -323,7 +323,7 @@ public class Scheduler {
 
             _instanceJobMap.get(ip).put(newJob.getJobId(), newJob);
 
-            newJob.start();
+//             newJob.start();
 
             _idleInstances.remove(ip);
 
