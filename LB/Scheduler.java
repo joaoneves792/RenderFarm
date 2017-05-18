@@ -329,39 +329,44 @@ public class Scheduler {
 // 				}
 			}
 		}
-			
-		// FIXME also take into consideration costOnBestInstance
-		if (cost > QUEUE_JOB_THRESHOLD && jobCountOnBestIP > 0) {
-			bestIP = QUEUED;
-			totalRunningJobs += _queuedJobs.size();
-		}
 		
-		int incrementTo = scaleUpTo(totalRunningJobs, _instanceJobMap.size());
-		if (incrementTo > 0) {
-			System.out.println(italic(cyan("Starting ") + (incrementTo - _instanceJobMap.size()) + cyan(" new instances...")) + "\tDesired total: " + incrementTo);
-			setDesiredCapacity(incrementTo);
+		if (jobCountOnBestIP > 0) {
+			System.out.println(yellow("All ") + _instanceJobMap.size() + yellow(" instances are full, total jobs running: ") + totalRunningJobs);
+			
+			// FIXME also take into consideration costOnBestInstance
+			if (cost > QUEUE_JOB_THRESHOLD) {
+				bestIP = QUEUED;
+// 				totalRunningJobs += _queuedJobs.size();
+			}
+			
+			int incrementTo = scaleUpTo(totalRunningJobs, _instanceJobMap.size());
+			if (incrementTo > 0) {
+				System.out.println(italic(cyan("Starting ") + (incrementTo - _instanceJobMap.size()) + cyan(" new instances...")) + "\tDesired total: " + incrementTo);
+				setDesiredCapacity(incrementTo);
+			}
 		}
 		
         return bestIP;
     }
     
     
-    public int scaleUpTo(final int totalRunningJobs, final int totalInstances) {
-		System.out.println(yellow("All ") + totalInstances + yellow(" instances are full, total jobs running: ") + totalRunningJobs);
-		
+    public int scaleUpTo(final int totalRunningJobs, final int totalInstances) {		
 		int desired = -1;
 		
-		double ratio = ((totalRunningJobs + _queuedJobs.size()) / (totalInstances * THREAD_COUNT_ON_INSTANCES));
-// 		System.out.println("div-ratio " + ratio);
-		
-		if (ratio  >= NEW_INSTANCE_THRESHOLD) {
-			desired = (int) Math.ceil(ratio * THREAD_COUNT_ON_INSTANCES);
-		}
+// 		double ratio = ((totalRunningJobs + _queuedJobs.size()) / (totalInstances * THREAD_COUNT_ON_INSTANCES));
+// // 		System.out.println("div-ratio " + ratio);
+// 		
+// 		if (ratio  >= NEW_INSTANCE_THRESHOLD) {
+// 			desired = (int) Math.ceil(ratio * THREAD_COUNT_ON_INSTANCES);
+// 		}
+
+		desired = (int) Math.ceil((totalRunningJobs + _queuedJobs.size()) / THREAD_COUNT_ON_INSTANCES) + 1;
 		
 		// something failed,
 		// 0 or lower will have the job just sent to an instance
 		return desired;
     }
+    
 
     public String scheduleJob(Job newJob) throws InterruptedException {
 		synchronized (_instanceJobMap) {
@@ -388,39 +393,41 @@ public class Scheduler {
 		String newIP = _freshInstances.take();
 		ConcurrentHashMap<String, Job> jobMap;
 		
-		if(!_instanceJobMap.containsKey(newIP)) {
-			jobMap = new ConcurrentHashMap<String, Job>();
-			
-			if (!_queuedJobs.isEmpty()) {			
-				Job job = _queuedJobs.take();
-				System.out.println(italic(yellow("<- from queue: ")) + italic(job.toString()));
-				jobMap.put(job.getJobId(), job);
+		synchronized (_instanceJobMap) {
+			if(!_instanceJobMap.containsKey(newIP)) {
+				jobMap = new ConcurrentHashMap<String, Job>();
+				
+				if (!_queuedJobs.isEmpty()) {			
+					Job job = _queuedJobs.take();
+					System.out.println(italic(yellow("<- from queue: ")) + italic(job.toString()));
+					jobMap.put(job.getJobId(), job);
+				}
+				
+				synchronized (_instanceJobMap) {
+					_instanceJobMap.put(newIP, jobMap);
+				}
+				
+				// because it's a new instance try to fetch a second job
+				if (_queuedJobs.size() > 0)
+					_freshInstances.put(newIP);
+				
+			} else {
+				jobMap = _instanceJobMap.get(newIP);
+				
+				if (!_queuedJobs.isEmpty()) {			
+					Job job = _queuedJobs.take();
+					System.out.println(italic(yellow("<- from queue: ")) + italic(job.toString()));
+					jobMap.put(job.getJobId(), job);
+				}
+				
+				synchronized (_instanceJobMap) {
+					_instanceJobMap.put(newIP, jobMap);
+				}
+				
 			}
 			
-			synchronized (_instanceJobMap) {
-				_instanceJobMap.put(newIP, jobMap);
-			}
-			
-			// because it's a new instance try to fetch a second job
-			if (_queuedJobs.size() > 0)
-				_freshInstances.put(newIP);
-			
-		} else {
-			jobMap = _instanceJobMap.get(newIP);
-			
-			if (!_queuedJobs.isEmpty()) {			
-				Job job = _queuedJobs.take();
-				System.out.println(italic(yellow("<- from queue: ")) + italic(job.toString()));
-				jobMap.put(job.getJobId(), job);
-			}
-			
-			synchronized (_instanceJobMap) {
-				_instanceJobMap.put(newIP, jobMap);
-			}
-			
+			_idleInstances.remove(newIP);
 		}
-		
-		_idleInstances.remove(newIP);
 		
 		return newIP;
     }
