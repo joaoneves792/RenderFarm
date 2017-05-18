@@ -96,7 +96,7 @@ public class Scheduler {
     }
 
     private class GetGroupIps implements Runnable{
-        private int TIME_TO_BOOT = 60000;//1min
+        private int RETRY_INTERVAL = 30000;//30sec
         public void run(){
             final List<String> ipsInAGS = getGroupIPs();
 
@@ -132,11 +132,11 @@ public class Scheduler {
                     ex.execute(new Runnable() { //Create a new thread to add the instance once it responds to http
                         @Override
                         public void run(){
-                            for(int retries=3; retries>0; retries--) {
+                            for(int retries=6; retries>0; retries--) {
                                 try {
                                     HttpURLConnection connection = (HttpURLConnection) new URL("http", ip,
                                             LoadBalancer.WS_PORT, LoadBalancer.TEST_RESOURCE).openConnection();
-                                    connection.setConnectTimeout(TIME_TO_BOOT);
+                                    connection.setConnectTimeout(RETRY_INTERVAL);
                                     if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
                                         connection.disconnect();
                                         addInstance(ip);
@@ -148,8 +148,8 @@ public class Scheduler {
                                     throw new IOException("Bad http response");
                                 } catch (IOException e) {
                                     try {
-                                        Thread.sleep(TIME_TO_BOOT);
-                                        //If the connection fails try sleeping for TIME_TO_BOOT and then try again
+                                        Thread.sleep(RETRY_INTERVAL);
+                                        //If the connection fails try sleeping for RETRY_INTERVAL and then try again
                                     }catch (InterruptedException ex){
                                         //empty
                                     }
