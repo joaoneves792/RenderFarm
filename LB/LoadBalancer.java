@@ -151,9 +151,9 @@ public class LoadBalancer {
 			try {
 				job.start();
 				String jobLog = green("\n[Sent]")
-								+ italic("\n\tinstance: ") + ipForJob
-								+ italic("\n\tjob: ") + job.toString()
-								+ italic("\n\testimated cost: ") + job.getEstimatedCost();
+								+ italic("\n    instance: ") + ipForJob
+								+ italic("\n    job: ") + job.toString()
+								+ italic("\n    estimated job cost: ") + job.getEstimatedCost();
 				
 				System.out.println(jobLog);
 // 				System.out.println(green("\nSent to: ") + ipForJob + italic("\tEstimated cost: ") + job.getEstimatedCost());

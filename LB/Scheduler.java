@@ -275,7 +275,7 @@ public class Scheduler {
 				}
 				
 				
-				System.out.println(red("At capacity: ") + italic(ip) + "estimated cost on instance: " + italic(""+costOnInstance));
+				System.out.println(red("At capacity: ") + italic(ip) + "\testimated cost on instance: " + italic(""+costOnInstance));
 				
 				
 				if ((costOnInstance * jobsForInstance.size() + cost) < costOnBestInstance) {
