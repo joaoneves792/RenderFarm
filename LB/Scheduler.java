@@ -263,6 +263,8 @@ public class Scheduler {
 			String ip = ipJobsKeyPair.getKey();
 			ConcurrentHashMap<String, Job> jobsForInstance = ipJobsKeyPair.getValue();
 			
+			System.out.println("-> derp.");
+			
 			// return first instance found with free threads
 			if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES) {
 				return ip;
@@ -276,7 +278,7 @@ public class Scheduler {
 				System.out.println(red("At capacity: ") + italic(ip));
 				
 				
-				if ((costOnInstance * jobsForInstance.size() + cost) < jobCountOnBestIP) {
+				if ((costOnInstance * jobsForInstance.size() + cost) < costOnBestInstance) {
 					bestIP = ip;
 					jobCountOnBestIP = jobsForInstance.size();
 					costOnBestInstance = costOnInstance;
