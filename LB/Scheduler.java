@@ -3,6 +3,8 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.*;
+import java.util.concurrent.LinkedBlockingQueue;
+
 import java.util.concurrent.*;
 
 import com.amazonaws.services.autoscaling.AmazonAutoScaling;
@@ -17,18 +19,25 @@ import com.amazonaws.services.ec2.model.Instance;
 
 public class Scheduler {
 
+    public static final String QUEUED = "QUEUED";
+	private static final double QUEUE_JOB_THRESHOLD = 100000; // FIXME
+
     private static final String REGION = "eu-west-1";
     private final String AUTOSCALING_GROUP_NAME = "RENDERFARM_ASG";
     private static final int THREAD_COUNT_ON_INSTANCES = 2;
 
     private static final int AUTOSCALING_GROUP_MIN_INSTANCES = 0;
-    private static final double NEW_INSTANCE_THRESHOLD = 2; // FIXME
+    private static final double NEW_INSTANCE_THRESHOLD = 1.5; // FIXME
+    
     private static final double ESTIMATED_COST_THRESHOLD = 30000; // FIXME
     private static final int INSTANCES_IP_CHECK_INTERVAL = 30; //In Seconds
     private static final int REMOVE_UNUSED_INSTANCES_INTERVAL = 120;//In Seconds
     private static final ScheduledExecutorService _scheduledExecutor = Executors.newScheduledThreadPool(2);
 
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, Job>> _instanceJobMap = new ConcurrentHashMap<String, ConcurrentHashMap<String, Job>>();
+    private final LinkedBlockingQueue<String> _freshInstances = new LinkedBlockingQueue<String>();
+    private final LinkedBlockingQueue<Job> _queuedJobs = new LinkedBlockingQueue<Job>();
+    
     private MetricsManager _metricsManager;
     private final List<String> _pendingBoot = new LinkedList<>();
     private final List<String> _idleInstances = new LinkedList<>();
@@ -195,10 +204,28 @@ public class Scheduler {
     }
 
     private synchronized void addInstance(String ip){
-        if(!_instanceJobMap.containsKey(ip)) {
-            _instanceJobMap.put(ip, new ConcurrentHashMap<String, Job>());
-            System.out.println(cyan("\nAdded instance: ") + ip);
-        }
+		
+		if (_queuedJobs.isEmpty()) {
+			// if no pending jobs, add instance normally
+			if(!_instanceJobMap.containsKey(ip)) {
+				ConcurrentHashMap<String, Job> jobMap = new ConcurrentHashMap<String, Job>();
+				_instanceJobMap.put(ip, jobMap);
+			}
+			
+		} else {
+			try {
+				// trigger the threads waiting for a new instance
+				_freshInstances.put(ip);
+				
+			} catch(InterruptedException e) {
+				if(!_instanceJobMap.containsKey(ip)) {
+					ConcurrentHashMap<String, Job> jobMap = new ConcurrentHashMap<String, Job>();
+					_instanceJobMap.put(ip, jobMap);
+				}
+			}
+		}
+		
+		System.out.println(cyan("\nAdded instance: ") + ip);
     }
 
     private synchronized ConcurrentHashMap<String, Job> removeInstance(String ip){
@@ -264,72 +291,117 @@ public class Scheduler {
 			ConcurrentHashMap<String, Job> jobsForInstance = ipJobsKeyPair.getValue();
 			
 			// return first instance found with free threads
-			if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES) {
+// 			if (jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES) {
+			if (jobsForInstance.size() == THREAD_COUNT_ON_INSTANCES-1) { // ==1
 				return ip;
 				
 			} else {
+				if (jobsForInstance.size() >= THREAD_COUNT_ON_INSTANCES)
+					System.out.println(red("At capacity: ") + italic(ip) + "\testimated cost on instance: " + italic(""+costOnInstance));
+				
 				costOnInstance = 0;
 				totalRunningJobs += jobsForInstance.size();
 				for(Job job : jobsForInstance.values()) {
 					costOnInstance += job.getEstimatedCost();
 				}
 				
-				
-				System.out.println(red("At capacity: ") + italic(ip) + "\testimated cost on instance: " + italic(""+costOnInstance));
-				
-				
-				if ((costOnInstance * jobsForInstance.size() + cost) < costOnBestInstance) {
-					bestIP = ip;
-					jobCountOnBestIP = jobsForInstance.size();
-					costOnBestInstance = costOnInstance;
-				}
-				
-// 				// FIXME calculate best possible based on some formula
-// 				if (jobsForInstance.size() < jobCountOnBestIP) {
+// 				if ((costOnInstance * jobsForInstance.size() + cost) < costOnBestInstance) {
 // 					bestIP = ip;
 // 					jobCountOnBestIP = jobsForInstance.size();
+// 					costOnBestInstance = costOnInstance;
 // 				}
+				
+				// FIXME calculate best possible based on some formula
+				if (jobsForInstance.size() < jobCountOnBestIP) {
+					bestIP = ip;
+					jobCountOnBestIP = jobsForInstance.size();
+				}
 			}
 		}
 		
-		
-		scaleUp(totalRunningJobs, _instanceJobMap.size());
+		int incrementTo = scaleUpTo(totalRunningJobs, _instanceJobMap.size());
+		if (incrementTo > 0) {
+			System.out.println(italic(cyan("Starting ") + (incrementTo - _instanceJobMap.size()) + cyan(" new instances...")) + "\tDesired total: " + incrementTo);
+			setDesiredCapacity(incrementTo);
+			
+			// FIXME also take into consideration costOnBestInstance
+			if (cost > QUEUE_JOB_THRESHOLD)
+				return QUEUED;
+		}
 		
         return bestIP;
     }
     
     
-    public void scaleUp(final int totalRunningJobs, final int totalInstances) {
-		Executors.newSingleThreadExecutor().execute(new Runnable() {
-				@Override
-				public void run() {
-					// start a new instance based on a ration between the exceeding and a threshold
-					System.out.println(yellow("All instances full, total jobs running: ") + totalRunningJobs);
-					if(totalRunningJobs > totalInstances * NEW_INSTANCE_THRESHOLD) {
-						int incrementBy = (int) (totalRunningJobs / THREAD_COUNT_ON_INSTANCES) - 1;
-						if(incrementBy > 0) {
-							System.out.println(italic(cyan("Starting ") + incrementBy + cyan(" new instances...")) + "\tDesired total: " + (totalInstances + incrementBy));
-							setDesiredCapacity(totalInstances + incrementBy);
-						}
-					}
+    public int scaleUpTo(final int totalRunningJobs, final int totalInstances) {
+		
+		int desired = -1;
+		
+// 		Executors.newSingleThreadExecutor().execute(new Runnable() {
+// 			@Override
+// 			public void run() {
+				// start a new instance based on a ration between the exceeding and a threshold
+				System.out.println(yellow("All instances full, total jobs running: ") + totalRunningJobs);
+				System.out.println("div "+(totalRunningJobs / totalInstances));
+				
+				
+				if (totalRunningJobs / totalInstances  >= NEW_INSTANCE_THRESHOLD) {
+					desired = ((int) (totalRunningJobs / THREAD_COUNT_ON_INSTANCES)) + totalInstances;
+					
+				} else {
+					desired = -1;
 				}
-			});
-
+// 			}
+// 		});
+		
+		// something failed,
+		// 0 or lower will have the job just sent to an instance
+		return desired;
     }
 
-    public String scheduleJob(Job newJob) {
+    public String scheduleJob(Job newJob) throws InterruptedException {
 		synchronized (_instanceJobMap) {
             String ip = getIpForJob(newJob);
-
-            _instanceJobMap.get(ip).put(newJob.getJobId(), newJob);
-
-//             newJob.start();
-
-            _idleInstances.remove(ip);
-
+            
+			// job will wait for a new instance to boot
+            if (ip.equals(QUEUED)) {
+				System.out.println(italic(yellow("-> queued: ")) + newJob.toString());
+				_queuedJobs.put(newJob);
+				
+			} else {
+// 				System.out.println(italic(yellow("NOT queued: ")) + newJob.toString());
+				_instanceJobMap.get(ip).put(newJob.getJobId(), newJob);
+				_idleInstances.remove(ip);
+			}
+			
+            
             return ip;
         }
     }
+    
+    
+    public String waitForBootAndSchedule() throws InterruptedException {
+		String newIP = _freshInstances.take();
+		
+		if(!_instanceJobMap.containsKey(newIP)) {
+			ConcurrentHashMap<String, Job> jobMap = new ConcurrentHashMap<String, Job>();
+			_instanceJobMap.put(newIP, jobMap);
+			
+			for (int i = 0; i < THREAD_COUNT_ON_INSTANCES; i++) {
+				if (_queuedJobs.isEmpty()) {
+					break;
+					
+				} else {				
+					Job job = _queuedJobs.take();
+					System.out.println(italic(yellow("<- from queue: ")) + newJob.toString());
+					jobMap.put(job.getJobId(), job);
+				}
+			}
+		}
+		
+		return newIP;
+    }
+    
     
     
     public  void finishJob(Job job, String instanceIp) {
@@ -348,8 +420,9 @@ public class Scheduler {
                     .withAutoScalingGroupName(AUTOSCALING_GROUP_NAME)
                     .withDesiredCapacity(capacity);
             _amazonAutoScalingClient.setDesiredCapacity(desiredCapacity);
+            
         }catch (AmazonAutoScalingException e){
-            System.out.println("AutoScaling exception: " + e.getMessage());
+            System.out.println(red("AutoScaling exception: ") + e.getMessage());
         }
     }
 

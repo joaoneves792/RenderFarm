@@ -132,16 +132,25 @@ public class LoadBalancer {
 				os.close();
 				return;
 			}
-
-
+			
+			
 			// Create a new job. Add to scheduler
 			// The IP of the host to which we want to redirect the request
-			String ipForJob;
+			String ipForJob = null;
 			do {
-				ipForJob = _scheduler.scheduleJob(job);
+				try {
+					ipForJob = _scheduler.scheduleJob(job);
+					
+					if (ipForJob.equals(_scheduler.QUEUED)) {
+						ipForJob = _scheduler.waitForBootAndSchedule();
+					}
+				} catch(InterruptedException e) {
+					System.out.println(red("failed to schedule job: ") + e.getMessage());
+				}
+				
 			} while (isDead(ipForJob));
-
-
+			
+			
 			String charset = java.nio.charset.StandardCharsets.UTF_8.name();
 			String query = t.getRequestURI().getQuery();
 			
@@ -151,14 +160,11 @@ public class LoadBalancer {
 			try {
 				job.start();
 				String jobLog = green("\n[Sent]")
-								+ italic("\n    instance: ") + ipForJob
-								+ italic("\n    job: ") + job.toString()
-								+ italic("\n    estimated job cost: ") + job.getEstimatedCost();
-				
+								+ italic("\n instance: ") + ipForJob
+								+ italic("\n job: ") + job.toString()
+								+ italic("\n estimated job cost: ") + job.getEstimatedCost();
 				System.out.println(jobLog);
-// 				System.out.println(green("\nSent to: ") + ipForJob + italic("\tEstimated cost: ") + job.getEstimatedCost());
 				
-// 				System.out.println("Sent job to: " + ipForJob);
 				InputStream response = connection.getInputStream();
 				ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 				
