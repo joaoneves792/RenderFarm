@@ -133,65 +133,74 @@ public class Scheduler {
                                 alreadyWaiting = true; //There is a thread already looking into it
                         _pendingBoot.add(ip);
                     }
-                    if(alreadyWaiting)
-                        continue;
-
-                    //If not then its our responsibility
-                    Executor ex = Executors.newSingleThreadExecutor();
-                    ex.execute(new Runnable() { //Create a new thread to add the instance once it responds to http
-                        @Override
-                        public void run(){
-                            for(int retries=6; retries>0; retries--) {
-                                try {
-                                    HttpURLConnection connection = (HttpURLConnection) new URL("http", ip,
-                                            LoadBalancer.WS_PORT, LoadBalancer.TEST_RESOURCE).openConnection();
-                                    connection.setConnectTimeout(RETRY_INTERVAL);
-                                    if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
-                                        connection.disconnect();
-                                        addInstance(ip);
-                                        synchronized (_pendingBoot){
-                                            _pendingBoot.remove(ip);
-                                        }
-                                        return;
-                                    }
-                                    throw new IOException("Bad http response");
-                                } catch (IOException e) {
-                                    try {
-                                        Thread.sleep(RETRY_INTERVAL);
-                                        //If the connection fails try sleeping for RETRY_INTERVAL and then try again
-                                    }catch (InterruptedException ex){
-                                        //empty
-                                    }
-                                }
-                            }
-                            synchronized (_pendingBoot){
-                                _pendingBoot.remove(ip);
-                            }
-                            reboot(ip); //If the machine does not respond for retries retries reboot it
-                        }
-                    });
+                    if(!alreadyWaiting) {
+                        pollUntilAlive(ip);
+                    }
                 }
             }
 
+        }
+
+        private void pollUntilAlive(String ip) {
+            Executor ex = Executors.newSingleThreadExecutor();
+            ex.execute(new Runnable() { //Create a new thread to add the instance once it responds to http
+                @Override
+                public void run() {
+                    for (int retries = 6; retries > 0; retries--) {
+                        try {
+                            HttpURLConnection connection = (HttpURLConnection) new URL("http", ip,
+                                    LoadBalancer.WS_PORT, LoadBalancer.TEST_RESOURCE).openConnection();
+                            connection.setConnectTimeout(RETRY_INTERVAL);
+                            if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                                connection.disconnect();
+                                addInstance(ip);
+                                synchronized (_pendingBoot) {
+                                    _pendingBoot.remove(ip);
+                                }
+                                return;
+                            }
+                            throw new IOException("Bad http response");
+                        } catch (IOException e) {
+                            try {
+                                Thread.sleep(RETRY_INTERVAL);
+                                //If the connection fails try sleeping for RETRY_INTERVAL and then try again
+                            } catch (InterruptedException ex) {
+                                //empty
+                            }
+                        }
+                    }
+                    synchronized (_pendingBoot) {
+                        _pendingBoot.remove(ip);
+                    }
+                    reboot(ip); //If the machine does not respond for retries retries reboot it
+                }
+            });
         }
     }
 
     private class RemoveUnusedInstances implements Runnable {
         @Override
+        //This code runs periodically
         public void run(){
+            //Synchronized on instanceJobMap so we dont run concurrently with the scheduling of requests
+            //This is done to prevent jobs from being assigned to instances in the process of being terminated
             synchronized (_instanceJobMap) {
+
+                //trim the list of instances to be terminated so we always have some available
                 while(_instanceJobMap.size() - _idleInstances.size() < AUTOSCALING_GROUP_MIN_INSTANCES
                         && _idleInstances.size() > 0) {
                     _idleInstances.remove(0);
                 }
+                //Terminate idle instances that have been idle for the last period
                 for (String ip : _idleInstances) {
                     _terminatingInstances.add(ip);
                     terminateInstance(ip);
                 }
 
-                _idleInstances.clear();
+                _idleInstances.clear();//Start with an empty list of idle instances
 
-
+                //Mark instances that have no jobs as idle (if they are not removed from the idle list for a whole
+                //period then they will be terminated next time this code runs)
                 for (Map.Entry<String, ConcurrentHashMap<String, Job>> entry : _instanceJobMap.entrySet()) {
                     String ip = entry.getKey();
                     ConcurrentHashMap<String, Job> jobMap = entry.getValue();
