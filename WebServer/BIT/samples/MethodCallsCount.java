@@ -30,9 +30,7 @@ import java.text.SimpleDateFormat;
 
 
 public class MethodCallsCount {
-	private static PrintStream out = null;
 	private static ThreadLocal<Long> counter;
-	
 	private static ThreadLocal<String> input_file;
 	private static ThreadLocal<Integer> sc;
 	private static ThreadLocal<Integer> sr;
@@ -40,12 +38,6 @@ public class MethodCallsCount {
 	private static ThreadLocal<Integer> wr;
 	private static ThreadLocal<Integer> coff;
 	private static ThreadLocal<Integer> roff;
-	private static ThreadLocal<Long> startTime;
-	private static ThreadLocal<Long> totalDuration;
-
-	private static FileWriter fw = null;
-	private static BufferedWriter bw = null;
-	
 	private static final DateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
 
 
@@ -56,32 +48,6 @@ public class MethodCallsCount {
 	*/
 	public static void main(String argv[]) {
 		// create file for the storing of metrics if it does not exist
-		try {
-			File metricsFile = new File("_instrumentation_data.txt");
-			
-			if(!metricsFile.exists()) {
-				metricsFile.createNewFile();
-				String newLine = "thread id \tdatetime \t\t\tfile \t\tsc \tsr \twc \twr \tcoff \troff \tmethods \tduration";
-				
-				fw = new FileWriter(metricsFile, true);
-				bw = new BufferedWriter(fw);
-				
-				bw.write(newLine);
-				bw.newLine();
-			}
-			
-		} catch(IOException e) {
-			System.out.println(e.getMessage());
-			
-		} finally {
-			try {
-				if(bw != null) bw.close();
-				if(fw != null) fw.close();
-				
-			} catch(IOException e) {
-				System.out.println(e.getMessage());
-			}
-		}
 		
 		// instrumentation
 		File file_in = new File(argv[0]);
@@ -101,11 +67,9 @@ public class MethodCallsCount {
 					//We only want to print the information from the renderHandler method
 					if (ci.getClassName().equals("WebServer$RenderHandler")) {
 						if (routine.getMethodName().equals("handle")) {
-							routine.addAfter("MethodCallsCount", "endTimer", 0);
-							routine.addAfter("MethodCallsCount", "printMCount", ci.getClassName());
+							routine.addAfter("MethodCallsCount", "saveMetrics", ci.getClassName());
 							routine.addBefore("MethodCallsCount", "initializeMCount", 0);
 							routine.addBefore("MethodCallsCount", "resetRequestArguments", 0);
-							routine.addBefore("MethodCallsCount", "startTimer", 0);
 						}
 					}
 				}
@@ -115,72 +79,13 @@ public class MethodCallsCount {
 		}
 	}
 	
-	public static synchronized void printMCount(String foo) {
-		try {
-			File metricsFile = new File("_instrumentation_data.txt");
-			long threadId = Thread.currentThread().getId();
-			String newLine = threadId + "\t\t\t" + sdf.format(new Date())
-							+ "\t" + input_file.get()
-							+ "\t" + sc.get() + "\t" + sr.get()
-							+ "\t" + wc.get() + "\t" + wr.get()
-							+ "\t" + coff.get() + "\t" + roff.get()
-							+ "\t" + counter.get()
-							+ "\t" + totalDuration.get();
-
-			fw = new FileWriter(metricsFile, true);
-			bw = new BufferedWriter(fw);
-			
-			bw.write(newLine);
-			bw.newLine();
-
-			/*Save the metrics*/
-			metricsManager.saveMetrics(input_file.get(), sc.get(), sr.get(), wc.get(), wr.get(), coff.get(), roff.get(), counter.get());
-
-		} catch(IOException e) {
-			System.out.println(e.getMessage());
-			
-		} finally {
-			try {
-				if(bw != null) bw.close();
-				if(fw != null) fw.close();
-				
-			} catch(IOException e) {
-				System.out.println(e.getMessage());
-			}
-		}
+	public static synchronized void saveMetrics(String foo) {
+		metricsManager.saveMetrics(input_file.get(), sc.get(), sr.get(), wc.get(), wr.get(), coff.get(), roff.get(), counter.get());
 	}
 	
 	// legacy function to get the methods counter from the RenderHandler
 	public static long getMethodsCounter() {
 		return counter.get();
-	}
-
-	public static void startTimer(int ignoreThis) {
-		if(startTime == null) {
-			startTime = new ThreadLocal<Long>() {
-				@Override protected Long initialValue() {
-					return System.currentTimeMillis();
-				}
-			};
-		}
-		startTime.set(System.currentTimeMillis());
-	}
-
-	public static void endTimer(int ignoreThis) {
-		if(startTime == null) {
-			totalDuration.set(0L);
-			return;
-		}
-
-		if(totalDuration == null) {
-			totalDuration = new ThreadLocal<Long>() {
-				@Override protected Long initialValue() {
-					return System.currentTimeMillis() - startTime.get();
-				}
-			};
-		}
-		totalDuration.set(System.currentTimeMillis() - startTime.get());
-
 	}
 
 	public static void mcount(int incr) {
