@@ -127,7 +127,7 @@ public class MetricsManager {
 
         //Check for existing metrics
         long existingMetrics = MetricsManager.getMetrics(fileName, sc, sr, wc, wr, coff, roff);
-        if(existingMetrics > -1) {
+        if(existingMetrics == mc) {
             return;
         }
         
