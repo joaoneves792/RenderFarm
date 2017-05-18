@@ -46,11 +46,11 @@ public class Scheduler {
         /*Get the instance IDs of the instances in our autoscaling group*/
         List<String> groupInstances = new LinkedList<>();
         for(AutoScalingInstanceDetails detail : details){
-            if(detail.getAutoScalingGroupName().equals(AUTOSCALING_GROUP_NAME)) {
+            if(detail.getAutoScalingGroupName().trim().equals(AUTOSCALING_GROUP_NAME)) {
                 groupInstances.add(detail.getInstanceId());
             }
         }
-        
+
         // FIXME when load balancer is an AWS image use internal IPs
         // get the instances public IPs
 
@@ -344,7 +344,7 @@ public class Scheduler {
 
     private void setDesiredCapacity(int capacity) {
         SetDesiredCapacityRequest desiredCapacity = new SetDesiredCapacityRequest()
-                    .withAutoScalingGroupName(AUTOSCALING_GROUP_NAME)
+                    .withAutoScalingGroupName("RENDERFARM_ASG")
                     .withDesiredCapacity(capacity);
         _amazonAutoScalingClient.setDesiredCapacity(desiredCapacity);
     }
