@@ -89,8 +89,6 @@ public class Scheduler {
         _metricsManager = new MetricsManager();
         _metricsManager.init();
     
-    
-    
         _scheduledExecutor.scheduleAtFixedRate(new GetGroupIps(), 0, INSTANCES_IP_CHECK_INTERVAL, TimeUnit.SECONDS);
         _scheduledExecutor.scheduleAtFixedRate(new RemoveUnusedInstances() ,REMOVE_UNUSED_INSTANCES_INTERVAL, REMOVE_UNUSED_INSTANCES_INTERVAL, TimeUnit.SECONDS);
 
@@ -348,47 +346,6 @@ public class Scheduler {
                     .withDesiredCapacity(capacity);
         _amazonAutoScalingClient.setDesiredCapacity(desiredCapacity);
     }
-    
-
-    public boolean allInstancesAreFull() {
-        if (_instanceJobMap.size() == 0)
-            return true;
-            
-        for(Map.Entry<String, ConcurrentHashMap<String, Job>> entry : _instanceJobMap.entrySet()) {
-            ConcurrentHashMap<String, Job> jobsForInstance = entry.getValue();
-            if(jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES)
-                return false;
-        }
-        return true;
-
-    }
-
-    public boolean shouldScaleDown() {
-        int emptyInstances = 0;
-
-        for(Map.Entry<String, ConcurrentHashMap<String, Job>> entry: _instanceJobMap.entrySet()) {
-            int jobsRunning = entry.getValue().size();
-            if(jobsRunning == 0)
-                emptyInstances++;
-        }
-
-        return emptyInstances > 1;
-
-    }
-
-    public boolean shouldScaleUp() {
-        int availableThreads = 0;
-        for(Map.Entry<String, ConcurrentHashMap<String, Job>> entry: _instanceJobMap.entrySet()) {
-            int jobsRunning = entry.getValue().size();
-            availableThreads += THREAD_COUNT_ON_INSTANCES - jobsRunning;
-        }
-
-        return availableThreads == 0;
-
-    }
-    
-
-    
 
     public String red(String text) { return "\u001B[31m" + text + "\u001B[0m"; }
     public String green(String text) { return "\u001B[32m" + text + "\u001B[0m"; }
