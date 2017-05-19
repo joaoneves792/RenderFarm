@@ -205,6 +205,15 @@ public class Scheduler {
                     String ip = entry.getKey();
                     ConcurrentHashMap<String, Job> jobMap = entry.getValue();
                     if (jobMap.size() == 0) {
+						
+						try {
+						if (!_queuedJobs.isEmpty())
+							_freshInstances.put(ip);
+							
+						} catch (InterruptedException e) {
+							// ignore
+						}
+						
                         _idleInstances.add(ip);
                     }
                 }
@@ -239,7 +248,7 @@ public class Scheduler {
 		
     }
 
-    private synchronized ConcurrentHashMap<String, Job> removeInstance(String ip){
+    private synchronized ConcurrentHashMap<String, Job> removeInstance(String ip) {
         ConcurrentHashMap<String, Job> removedInstance = null;
         if(_instanceJobMap.containsKey(ip)) {
             removedInstance = _instanceJobMap.get(ip);
@@ -249,7 +258,7 @@ public class Scheduler {
         return removedInstance;
     }
 
-    public void instanceFailure(String ip){
+    public void instanceFailure(String ip) {
         //Remove the instance from our map
         removeInstance(ip);
 
@@ -307,14 +316,15 @@ public class Scheduler {
 				return ip;
 				
 			} else {
-				if (jobsForInstance.size() >= THREAD_COUNT_ON_INSTANCES)
-					System.out.println(red("At capacity: ") + italic(ip) + "\testimated cost on instance: " + italic(""+costOnInstance));
 				
 				costOnInstance = 0;
 				totalRunningJobs += jobsForInstance.size();
 				for(Job job : jobsForInstance.values()) {
 					costOnInstance += job.getEstimatedCost();
 				}
+				
+				if (jobsForInstance.size() >= THREAD_COUNT_ON_INSTANCES)
+					System.out.println(red("At capacity: ") + italic(ip) + "\testimated cost on instance: " + italic(""+costOnInstance));
 				
 				if ((costOnInstance * jobsForInstance.size() + cost) < costOnBestInstance) {
 					bestIP = ip;

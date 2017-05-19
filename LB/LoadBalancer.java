@@ -181,7 +181,7 @@ public class LoadBalancer {
 				
 			} catch(IOException e) {
 				e.printStackTrace();
-				String response = String.valueOf("EXCEPTION: " + connection.getResponseCode());
+				String response = String.valueOf(red("EXCEPTION: ") + connection.getResponseCode() + "\n");
 				System.out.println(response);
 				t.sendResponseHeaders(200, response.length());
 				OutputStream os = t.getResponseBody();
