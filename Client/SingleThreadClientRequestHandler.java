@@ -3,10 +3,10 @@ import java.net.URL;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Semaphore;
 
 
-public class ClientRequestHandler {
+public class SingleThreadClientRequestHandler {
 	
 	String _protocol = "http";
 	String _host = "localhost:8000/r.html";
@@ -18,7 +18,7 @@ public class ClientRequestHandler {
 	private int _height, _width;
 	
 	
-	public ClientRequestHandler() {
+	public SingleThreadClientRequestHandler() {
 		_protocol = "http";
 		_host = "localhost:8000/r.html";
 		
@@ -30,7 +30,7 @@ public class ClientRequestHandler {
 		_width = 1920;
 	}
 	
-	public ClientRequestHandler(String protocol, String host) {
+	public SingleThreadClientRequestHandler(String protocol, String host) {
 		this();
 		_protocol = protocol;
 		_host = host;
@@ -39,33 +39,24 @@ public class ClientRequestHandler {
 	
 	public void makeRequest(String f, int sc, int sr, int wc, int wr, int coff, int roff) {
 		
-		new Thread( new Runnable() {
-			public void run() {
-				
-				Timer timer = Timer.start();
-				try {
-					URL url = new URL(_protocol + "://" + _host
-										+ "?" + getRequest(f, sc, sr, wc, wr, coff, roff));
-					System.out.println("\n-> " + url);
-					
-					String response = "";
-					
-					int size = 0;
-					BufferedReader br = new BufferedReader(new InputStreamReader(url.openStream()));
-					while ((response = br.readLine()) != null) {
-						size += response.length();
-					}
-					
-					System.out.println("\n<-- " + url);
-					System.out.println("<-- image returned (" + size + ") -> "
-										+ timer.time(TimeUnit.SECONDS) + " seconds.");
-					
-				} catch(Exception e) {
-					System.out.println(e.getMessage());
-				}
-				
+		try {
+			URL url = new URL(_protocol + "://" + _host
+								+ "?" + getRequest(f, sc, sr, wc, wr, coff, roff));
+			System.out.println("\n-> " + url);
+			
+			String response = "";
+			
+			int size = 0;
+			BufferedReader br = new BufferedReader(new InputStreamReader(url.openStream()));
+			while ((response = br.readLine()) != null) {
+				size += response.length();
 			}
-		}).start();
+			
+			System.out.println("<-- image returned (" + size + ")");
+			
+		} catch(Exception e) {
+			System.out.println(e.getMessage());
+		}
 	}
 	
 	public String getRequest() {

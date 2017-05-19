@@ -20,3 +20,6 @@ runfull:
 	
 runsimple:
 	java $(JAVA_OPTIONS) ServerTestSimple
+	
+runincremental:
+	java $(JAVA_OPTIONS) IncrementalServerTest

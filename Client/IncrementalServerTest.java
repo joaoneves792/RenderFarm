@@ -10,10 +10,9 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 
 
-public class ServerTest {
+public class IncrementalServerTest {
 	
     public static void main(String[] args) throws InterruptedException {
-		
 		
     	String file;
 		int sc, sr, wc, wr;
@@ -32,22 +31,19 @@ public class ServerTest {
 		width = height = 1000;
 		
 		// auxiliar class
-		ClientRequestHandler client = new ClientRequestHandler(protocol, host);
+		SingleThreadClientRequestHandler client = new SingleThreadClientRequestHandler(protocol, host);
 		
 		
-		// loop similar requets -> answers 7 requets
-		for (int i = 0; i < 10; i=i+1) {
-// 			client.makeRequest("test04.txt", 400, 300, 400, 300, i, i);
-			client.makeRequest("test04.txt", 8000, 6000, 1600, 1200, i, 400+i);	
-// 			client.makeRequest("test04.txt", 20000, 15000, 3250, 2500, 5000+i, 6500+i);
+		Timer timer;
+		
+		for (int i = 0; i < 100; i=i+50) {
+			timer = Timer.start();
+			
+			client.makeRequest("test04.txt", 400+i, 300+i, 400+i, 300+i, 0, i);
+			
+			System.out.println("\n" + timer.time(TimeUnit.SECONDS) + " seconds.");			
 		}
 		
-// 		Thread.sleep(2000);
-// 		for (int i = 1; i < 10; i=i+1) {
-// 			client.makeRequest(sem, "test04.txt", 400, 300, 400, 300, i, i);
-// 		}
-		
-
 	}
 	
 }

@@ -160,11 +160,6 @@ public class LoadBalancer {
 			
 			try {
 				job.start(ipForJob);
-// 				String jobLog = green("\n[Sent]")
-// 								+ italic("\n instance: ") + ipForJob
-// 								+ italic("\n job: ") + job.toString()
-// 								+ italic("\n estimated job cost: ") + job.getEstimatedCost();
-// 				System.out.println(jobLog);
 				
 				InputStream response = connection.getInputStream();
 				ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
