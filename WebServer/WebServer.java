@@ -93,6 +93,7 @@ public class WebServer {
                 OutputStream os = t.getResponseBody();
                 os.write(bytes);
                 os.close();
+                outFile.delete();
 
             } catch(InterruptedException e) {
                 response = e.getMessage();
