@@ -33,7 +33,9 @@ public class ServerTestSimple {
 		Timer timer = Timer.start();
 		
 		// simple, single request
-		client.makeRequest(sem, "test05.txt", 400, 300, 400, 300, 0, 0);
+// 		client.makeRequest(sem, "test01.txt", 400, 300, 400, 300, 0, 0);
+		client.makeRequest(sem, "test05.txt", 20000, 15000, 3250, 2500, 5000, 6500);
+		
 		
 		try {
 			// FIXME not working use "time make run instead"

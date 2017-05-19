@@ -1,6 +1,11 @@
+
 import java.util.Date;
 import java.util.HashMap;
 import java.util.UUID;
+
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+
 
 public class Job {
     private String fileName;
@@ -10,7 +15,48 @@ public class Job {
     private long _jobStartedTime, _jobEndedTime;
     private boolean _jobIsDone;
     private HashMap<String, Double> _coefficientMap;
-
+    
+	DateFormat dtf = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss:SSS");
+	
+	
+    private String _desiredIP;
+    public String getDesiredIP() { return _desiredIP; }
+    public void setDesiredIP(String ip) { _desiredIP = ip; }
+    
+	public void start(String ip) {
+		setDesiredIP(ip);
+		_jobStartedTime = new Date().getTime();
+		
+		String jobLog = LoadBalancer.green("\n[ Sent - " + dtf.format(new Date()) + " ]")
+						+ LoadBalancer.italic("\n instance: ") + _desiredIP
+						+ LoadBalancer.italic("\n job: ") + toString()
+						+ LoadBalancer.italic("\n estimated job cost: ") + getEstimatedCost();
+		System.out.println(jobLog);
+	}
+    
+    public void stop(String ip) {
+						
+		String jobLog = "\n" + LoadBalancer.italic(
+								LoadBalancer.yellow(String.format("%80s", "< Received - " + dtf.format(new Date()) + " >"))
+								+ "\n" + String.format("%80s", " instance: " + _desiredIP)
+								+ "\n" + String.format("%80s", " job: " + toString()));
+						
+		System.out.println(jobLog);
+	}
+	
+	public void finish() {
+		_jobEndedTime = new Date().getTime();
+						
+		String jobLog = "\n" + LoadBalancer.italic(
+								LoadBalancer.green(String.format("%80s", "[ Answered - " + dtf.format(new Date()) + " ]"))
+								+ "\n" + String.format("%80s", " instance: " + _desiredIP)
+								+ "\n" + String.format("%80s", " job: " + toString()));
+						
+		System.out.println(jobLog);
+		
+		_jobIsDone = true;
+	}
+    
     public Job(String fileName, int wc, int wr, int sc, int sr, int coff, int roff) {
         _jobId = UUID.randomUUID().toString();
         this.wc = wc;
@@ -39,17 +85,17 @@ public class Job {
     }
     
     
-	public void start() {
-		System.out.println("\n\u001B[03m START \u001B[0m" + ": " + toString());
-		_jobStartedTime = new Date().getTime();
-	}
-	
-    
-    public void stop() {
-		System.out.println("\n\u001B[03m STOP \u001B[0m" + ": " + toString());
-        _jobEndedTime = new Date().getTime();
-        _jobIsDone = true;
-    }
+// 	public void start() {
+// 		System.out.println("\n\u001B[03m START \u001B[0m" + ": " + toString());
+// 		_jobStartedTime = new Date().getTime();
+// 	}
+// 	
+//     
+//     public void stop() {
+// 		System.out.println("\n\u001B[03m STOP \u001B[0m" + ": " + toString());
+//         _jobEndedTime = new Date().getTime();
+//         _jobIsDone = true;
+//     }
     
     public boolean previousMetricsExists() {
         return _estimatedCount != -1;

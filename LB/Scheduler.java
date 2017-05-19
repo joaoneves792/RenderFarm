@@ -19,17 +19,16 @@ import com.amazonaws.services.ec2.model.Instance;
 
 public class Scheduler {
 
-    public static final String QUEUED = "QUEUED";
-	private static final double QUEUE_JOB_THRESHOLD = 100000; // FIXME
-
     private static final String REGION = "eu-west-1";
     private final String AUTOSCALING_GROUP_NAME = "RENDERFARM_ASG";
     private static final int THREAD_COUNT_ON_INSTANCES = 2;
-
-    private static final int AUTOSCALING_GROUP_MIN_INSTANCES = 2;
-    private static final double NEW_INSTANCE_THRESHOLD = 1.5; // FIXME
     
-    private static final double ESTIMATED_COST_THRESHOLD = 30000; // FIXME
+    private static final int AUTOSCALING_GROUP_MIN_INSTANCES = 2;
+	
+    public static final String QUEUED = "QUEUED";
+	private static final double QUEUE_JOB_THRESHOLD = 100000; // FIXME experimentation
+    private static final double NEW_INSTANCE_THRESHOLD = 300000; // FIXME experimentation
+    
     private static final int INSTANCES_IP_CHECK_INTERVAL = 30; //In Seconds
     private static final int REMOVE_UNUSED_INSTANCES_INTERVAL = 120;//In Seconds
     private static final ScheduledExecutorService _scheduledExecutor = Executors.newScheduledThreadPool(2);
@@ -92,9 +91,7 @@ public class Scheduler {
                 .standard()
                 .withRegion(REGION)
                 .build();
-                
-        // FIXME populate our instance map with the ips to the instances in our auto-scaling group.
-        
+		
         _metricsManager = new MetricsManager();
         _metricsManager.init();
     
@@ -137,9 +134,9 @@ public class Scheduler {
                     }
                 }
             }
-
         }
-
+        
+        
         private void pollUntilAlive(final String ip) {
             Executor ex = Executors.newSingleThreadExecutor();
             ex.execute(new Runnable() { //Create a new thread to add the instance once it responds to http
@@ -210,7 +207,7 @@ public class Scheduler {
 							_freshInstances.put(ip);
 							
 						} catch (InterruptedException e) {
-							// ignore
+							System.out.println(red("failed to retake a job: ") + e.getMessage());
 						}
 						
                         _idleInstances.add(ip);
@@ -236,6 +233,7 @@ public class Scheduler {
 				_freshInstances.put(ip);
 				
 			} catch(InterruptedException e) {
+				System.out.println(red("interrupted: ") + e.getMessage());
 				if(!_instanceJobMap.containsKey(ip)) {
 					ConcurrentHashMap<String, Job> jobMap = new ConcurrentHashMap<String, Job>();
 					_instanceJobMap.put(ip, jobMap);
@@ -304,6 +302,8 @@ public class Scheduler {
 		double costOnInstance = 0;
 		double costOnBestInstance = 999999;
 		int totalRunningJobs = 0;
+		double totalCost = 0;
+		
 		System.out.println();
 		for(Map.Entry<String, ConcurrentHashMap<String, Job>> ipJobsKeyPair : _instanceJobMap.entrySet()) {
 			String ip = ipJobsKeyPair.getKey();
@@ -323,35 +323,47 @@ public class Scheduler {
 				}
 				
 				if (jobsForInstance.size() >= THREAD_COUNT_ON_INSTANCES)
-					System.out.println(red("At capacity: ") + italic(ip) + "\testimated cost on instance: " + italic(""+costOnInstance));
+					System.out.println(red("At capacity: ") + ip + red("\tjobs: ") + jobsForInstance.size() + red("\tcost: ") + costOnInstance);
 				
-				if ((costOnInstance * jobsForInstance.size() + cost) < costOnBestInstance) {
+				// calculate best possible based on formula
+				double refinedCost = (costOnInstance * jobsForInstance.size() + cost);
+				if (refinedCost < costOnBestInstance) {
 					bestIP = ip;
 					jobCountOnBestIP = jobsForInstance.size();
-					costOnBestInstance = costOnInstance;
+					costOnBestInstance = refinedCost;
 				}
+				totalCost += costOnInstance;
 				
-// 				// FIXME calculate best possible based on some formula
-// 				if (jobsForInstance.size() < jobCountOnBestIP) {
-// 					bestIP = ip;
-// 					jobCountOnBestIP = jobsForInstance.size();
-// 				}
 			}
 		}
 		
-		if (jobCountOnBestIP > 0) {
-			System.out.println(yellow("All ") + _instanceJobMap.size() + yellow(" instances are full, total jobs running: ") + totalRunningJobs);
+		if (jobCountOnBestIP >= THREAD_COUNT_ON_INSTANCES ) {
+			System.out.println(yellow("All ") + _instanceJobMap.size() + yellow(" instances are full, JOBS: ") + totalRunningJobs + yellow(", COST: ") + totalCost);
 			
-			// FIXME also take into consideration costOnBestInstance
+			// FIXME also take into consideration costOnBestInstance?
 			if (cost > QUEUE_JOB_THRESHOLD) {
 				bestIP = QUEUED;
-// 				totalRunningJobs += _queuedJobs.size();
 			}
 			
-			int incrementTo = scaleUpTo(totalRunningJobs, _instanceJobMap.size());
-			if (incrementTo > 0) {
-				System.out.println(italic(cyan("Starting ") + (incrementTo - _instanceJobMap.size()) + cyan(" new instances...")) + "\tDesired total: " + incrementTo);
-				setDesiredCapacity(incrementTo);
+			double ratio = totalCost/_instanceJobMap.size();
+			if (ratio > NEW_INSTANCE_THRESHOLD) {
+				
+				int incrementTo = scaleUpTo(_instanceJobMap.size(), totalRunningJobs, totalCost);
+				if (incrementTo > 0) {
+					System.out.println(ratio + cyan(" < ") + NEW_INSTANCE_THRESHOLD
+										+ cyan(", starting ") + (incrementTo - _instanceJobMap.size()) + cyan(" new instances...")
+										+ cyan(" desired total: ") + incrementTo);
+					try {
+						setDesiredCapacity(incrementTo);
+						
+					}catch (AmazonAutoScalingException e){
+						System.out.println(red("AutoScaling exception: ") + e.getMessage() + "\n");
+// 						bestIP = QUEUED;
+					}
+					
+				}
+			} else {
+				System.out.println(ratio + cyan(" < ") + NEW_INSTANCE_THRESHOLD + cyan(", keeping instances."));
 			}
 		}
 		
@@ -359,21 +371,9 @@ public class Scheduler {
     }
     
     
-    public int scaleUpTo(final int totalRunningJobs, final int totalInstances) {		
-		int desired = -1;
+    public int scaleUpTo(final int totalInstances, final int totalRunningJobs, final double totalCost) {
 		
-// 		double ratio = ((totalRunningJobs + _queuedJobs.size()) / (totalInstances * THREAD_COUNT_ON_INSTANCES));
-// // 		System.out.println("div-ratio " + ratio);
-// 		
-// 		if (ratio  >= NEW_INSTANCE_THRESHOLD) {
-// 			desired = (int) Math.ceil(ratio * THREAD_COUNT_ON_INSTANCES);
-// 		}
-
-		desired = (int) Math.ceil((totalRunningJobs + _queuedJobs.size()) / THREAD_COUNT_ON_INSTANCES) + 1;
-		
-		// something failed,
-		// 0 or lower will have the job just sent to an instance
-		return desired;
+		return (int) Math.ceil( (totalRunningJobs + _queuedJobs.size()) / THREAD_COUNT_ON_INSTANCES ) + 1;
     }
     
 
@@ -383,7 +383,7 @@ public class Scheduler {
             
 			// job will wait for a new instance to boot
             if (ip.equals(QUEUED)) {
-				System.out.println(italic(yellow("-> queued: ")) + italic(newJob.toString()));
+				System.out.println(italic(yellow("\n-> queued: ")) + italic(newJob.toString()));
 				_queuedJobs.put(newJob);
 				
 			} else {
@@ -417,21 +417,23 @@ public class Scheduler {
 				}
 				
 				// because it's a new instance try to fetch a second job
-				if (_queuedJobs.size() > 0)
+				if (_queuedJobs.size() > _freshInstances.size())
 					_freshInstances.put(newIP);
 				
 			} else {
-				jobMap = _instanceJobMap.get(newIP);
-				
-				if (!_queuedJobs.isEmpty()) {			
-					Job job = _queuedJobs.take();
-					System.out.println(italic(yellow("<- from queue: ")) + italic(job.toString()));
-					jobMap.put(job.getJobId(), job);
-				}
-				
 				synchronized (_instanceJobMap) {
-					_instanceJobMap.put(newIP, jobMap);
+					jobMap = _instanceJobMap.get(newIP);
+					
+					if (!_queuedJobs.isEmpty()) {			
+						Job job = _queuedJobs.take();
+						System.out.println(italic(yellow("<- from queue: ")) + italic(job.toString()));
+						jobMap.put(job.getJobId(), job);
+					}
 				}
+				
+// 				synchronized (_instanceJobMap) {
+// 					_instanceJobMap.put(newIP, jobMap);
+// 				}
 				
 			}
 			
@@ -444,25 +446,32 @@ public class Scheduler {
     
     
     public  void finishJob(Job job, String instanceIp) {
-        job.stop();
+        job.finish();
 		
 		ConcurrentHashMap<String, Job> jobsForInstance = _instanceJobMap.get(instanceIp);
 		synchronized(jobsForInstance) {
 			jobsForInstance.remove(job.getJobId());
         }
+        
+		// allways try to have 2 jobs running
+		if ((jobsForInstance.size() < THREAD_COUNT_ON_INSTANCES) && !_queuedJobs.isEmpty()) {
+			try {
+				_freshInstances.put(instanceIp);
+				
+			} catch(InterruptedException e) {
+				System.out.println(red("failed to fetch job on finish: ") + e.getMessage());
+			}
+		}
     }
     
 
-    private void setDesiredCapacity(int capacity) {
-        try {
-            SetDesiredCapacityRequest desiredCapacity = new SetDesiredCapacityRequest()
-                    .withAutoScalingGroupName(AUTOSCALING_GROUP_NAME)
-                    .withDesiredCapacity(capacity);
-            _amazonAutoScalingClient.setDesiredCapacity(desiredCapacity);
+    private void setDesiredCapacity(int capacity) throws AmazonAutoScalingException {
+		SetDesiredCapacityRequest desiredCapacity = new SetDesiredCapacityRequest()
+				.withAutoScalingGroupName(AUTOSCALING_GROUP_NAME)
+				.withDesiredCapacity(capacity);
+		_amazonAutoScalingClient.setDesiredCapacity(desiredCapacity);
             
-        }catch (AmazonAutoScalingException e){
-            System.out.println(red("AutoScaling exception: ") + e.getMessage() + "\n");
-        }
+
     }
 
     public String red(String text) { return "\u001B[31m" + text + "\u001B[0m"; }
@@ -499,6 +508,24 @@ public class Scheduler {
 // 		
 // 		// something failed,
 // 		// 0 or lower will have the job just sent to an instance
+// 		return desired;
+//     }
+
+
+//     public int scaleUpTo(final int totalInstances, final int totalRunningJobs, final double totalCost) {
+// 
+// 		int desired = -1;
+// 		
+// // 		double ratio = ((totalRunningJobs + _queuedJobs.size()) / (totalInstances * THREAD_COUNT_ON_INSTANCES));
+// // 		System.out.println("div-ratio " + ratio);
+// // 		if (ratio  >= NEW_INSTANCE_THRESHOLD) {
+// // 			desired = (int) Math.ceil(ratio * THREAD_COUNT_ON_INSTANCES);
+// // 		}
+// 
+// 		if (totalCost/totalInstances > NEW_INSTANCE_THRESHOLD)
+// 			desired = (int) Math.ceil((totalRunningJobs + _queuedJobs.size()) / THREAD_COUNT_ON_INSTANCES) + 1;
+// 		
+// 		// something failed, 0 or lower will have the job just sent to an instance
 // 		return desired;
 //     }
 

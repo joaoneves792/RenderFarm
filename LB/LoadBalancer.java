@@ -159,16 +159,17 @@ public class LoadBalancer {
 			connection.setRequestProperty("Accept-Charset", charset);
 			
 			try {
-				job.start();
-				String jobLog = green("\n[Sent]")
-								+ italic("\n instance: ") + ipForJob
-								+ italic("\n job: ") + job.toString()
-								+ italic("\n estimated job cost: ") + job.getEstimatedCost();
-				System.out.println(jobLog);
+				job.start(ipForJob);
+// 				String jobLog = green("\n[Sent]")
+// 								+ italic("\n instance: ") + ipForJob
+// 								+ italic("\n job: ") + job.toString()
+// 								+ italic("\n estimated job cost: ") + job.getEstimatedCost();
+// 				System.out.println(jobLog);
 				
 				InputStream response = connection.getInputStream();
 				ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 				
+				job.stop(ipForJob);
 				int data;
 				while ((data = response.read()) > -1) {
 					outputStream.write(data);
