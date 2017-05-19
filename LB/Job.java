@@ -12,7 +12,6 @@ public class Job {
     private int wc, wr, sc, sr, coff, roff;
     private String _jobId;
     private double _estimatedCount = -1;
-    private long _jobStartedTime, _jobEndedTime;
     private boolean _jobIsDone;
     private HashMap<String, Double> _coefficientMap;
     
@@ -25,8 +24,7 @@ public class Job {
     
 	public void start(String ip) {
 		setDesiredIP(ip);
-		_jobStartedTime = new Date().getTime();
-		
+
 		String jobLog = LoadBalancer.green("\n[ Sent - " + dtf.format(new Date()) + " ]")
 						+ LoadBalancer.italic("\n instance: ") + _desiredIP
 						+ LoadBalancer.italic("\n job: ") + toString()
@@ -45,8 +43,7 @@ public class Job {
 	}
 	
 	public void finish() {
-		_jobEndedTime = new Date().getTime();
-						
+
 		String jobLog = "\n" + LoadBalancer.italic(
 								LoadBalancer.green(String.format("%80s", "[ Answered - " + dtf.format(new Date()) + " ]"))
 								+ "\n" + String.format("%80s", " instance: " + _desiredIP)
