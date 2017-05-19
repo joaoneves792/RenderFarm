@@ -120,8 +120,7 @@ public class Scheduler {
 
             // Add ip's that are not in the map.
             // This is the case where we have added a new instance.
-            for(String ipInAgs : ipsInAGS) {
-                final String ip = ipInAgs;//Hack
+            for(String ip : ipsInAGS) {
                 if (ip != null && !_instanceJobMap.containsKey(ip) &&
                         !_terminatingInstances.contains(ip)) { //If instance is not in our map and is not marked for termination
 
@@ -141,7 +140,7 @@ public class Scheduler {
 
         }
 
-        private void pollUntilAlive(String ip) {
+        private void pollUntilAlive(final String ip) {
             Executor ex = Executors.newSingleThreadExecutor();
             ex.execute(new Runnable() { //Create a new thread to add the instance once it responds to http
                 @Override
