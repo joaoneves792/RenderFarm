@@ -26,8 +26,8 @@ public class Scheduler {
     private static final int AUTOSCALING_GROUP_MIN_INSTANCES = 2;
 	
     public static final String QUEUED = "QUEUED";
-	private static final double QUEUE_JOB_THRESHOLD = 100000; // FIXME experimentation
-    private static final double NEW_INSTANCE_THRESHOLD = 200000; // FIXME experimentation
+	private static final double QUEUE_JOB_THRESHOLD = 100000;
+    private static final double NEW_INSTANCE_THRESHOLD = 200000;
     
     private static final int INSTANCES_IP_CHECK_INTERVAL = 30; //In Seconds
     private static final int REMOVE_UNUSED_INSTANCES_INTERVAL = 120;//In Seconds
@@ -81,7 +81,7 @@ public class Scheduler {
             }
         }
 
-        // FIXME when load balancer is an AWS image use internal IPs
+
 		
         /*Now get their public IPs*/
         DescribeInstancesRequest describeRequest = new DescribeInstancesRequest();
@@ -315,15 +315,15 @@ public class Scheduler {
     
     
     public int scaleUpTo(final int totalInstances, final int totalRunningJobs, final double totalCost) {
-// 		return (int) Math.ceil( (totalRunningJobs + _queuedJobs.size()) / THREAD_COUNT_ON_INSTANCES ) + 1;
-		return (int) Math.ceil( (totalRunningJobs + _queuedJobs.size()) / THREAD_COUNT_ON_INSTANCES );
+ 		return (int) Math.ceil( (totalRunningJobs + _queuedJobs.size()) / THREAD_COUNT_ON_INSTANCES ) + 1;
+//		return (int) Math.ceil( (totalRunningJobs + _queuedJobs.size()) / THREAD_COUNT_ON_INSTANCES );
     }
     
     
     public void decideScaling(final int totalInstances, final int totalRunningJobs, final double totalCost, final int queuedJobs) {
-		Executors.newSingleThreadExecutor().execute(new Runnable() {
+		/*Executors.newSingleThreadExecutor().execute(new Runnable() {
 			@Override
-			public void run() {
+			public void run() {*/
 				double ratio = totalCost/totalInstances;
 				if (ratio > NEW_INSTANCE_THRESHOLD) {
 					
@@ -335,7 +335,7 @@ public class Scheduler {
 						try {
 							setDesiredCapacity(incrementTo);
 							
-						} catch (AmazonAutoScalingException e) {
+						} catch (Exception e) {
 							System.out.println(red("AutoScaling exception: ") + e.getMessage() + "\n");
 						}
 					}
@@ -343,8 +343,8 @@ public class Scheduler {
 				} else {
 					System.out.println("\n" + ratio + cyan(" < ") + NEW_INSTANCE_THRESHOLD + cyan(", keeping instances."));
 				}
-			}
-		});
+			/*}
+		});*/
 	}
 	
     
@@ -396,7 +396,6 @@ public class Scheduler {
 		if (jobCountOnBestIP >= THREAD_COUNT_ON_INSTANCES ) {
 			System.out.println(yellow("All ") + _instanceJobMap.size() + yellow(" instances are full, JOBS: ") + totalRunningJobs + yellow(", COST: ") + totalCost);
 			
-			// FIXME also take into consideration costOnBestInstance?
 			if ((costOnBestInstance + cost) > QUEUE_JOB_THRESHOLD) {
 				bestIP = QUEUED;
 				

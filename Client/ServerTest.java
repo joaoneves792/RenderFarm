@@ -23,7 +23,8 @@ public class ServerTest {
 		
 		String protocol = "http";
 		String host = "localhost:8001/r.html";
-// 		String host = "52.31.49.163:8001/r.html";
+// 		String host = "34.251.67.226:8001/r.html";
+// 		String host = "54.194.8.65:8001/r.html";
 		
 		file = "test05.txt";
 		sc = sr = wc = wr = 100;
@@ -38,8 +39,9 @@ public class ServerTest {
 		// loop similar requets -> answers 7 requets
 		for (int i = 0; i < 10; i=i+1) {
 // 			client.makeRequest("test04.txt", 400, 300, 400, 300, i, i);
-			client.makeRequest("test04.txt", 8000, 6000, 1600, 1200, i, 400+i);	
-// 			client.makeRequest("test04.txt", 20000, 15000, 3250, 2500, 5000+i, 6500+i);
+//			client.makeRequest("test04.txt", 8000, 6000, 1600, 1200, i, 400+i);	
+ 			client.makeRequest("test04.txt", 20000, 15000, 3250, 2500, 5000+i, 6500+i);
+//          client.makeRequest("test05.txt", 20000, 15000, 3250, 2500, 5000+i, 6500+i);
 		}
 		
 // 		Thread.sleep(2000);
