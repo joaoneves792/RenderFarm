@@ -1,39 +1,24 @@
 # RenderFarm
 
-## Run on your local machine
+The project is composed of 3 Components each in its own folder:
+-WebServer
+-LB
+-MetricsManager
 
-Make sure you are running Java 7
+The MetricsManager class is a compile dependency of both the WebServer and the LoadBalancer.
 
-make
+The instrumentation code is located in ./WebServer/BIT/samples/MethodCallsCount.java
 
-make run
+To compile the project run make on the base folder, this will compile all the Components 
+(and includes the instrumentation of the WebServers code).
 
-Test it with:
+To execute the WebServer locally run make run-WS.
+To execute the LoadBalancer locally run make run-LB.
 
-curl "http://localhost:8000/r.html?f=test05.txt&sc=400&sr=300&wc=400&wr=300&coff=0&roff=0"
+In order for the compilation to be successfull java-aws-sdk version 1.11.128 must be installed in
+/opt/aws-java-sdk
 
-## WebServer
+The ./boot_script.sh and ./boot_script_lb.sh are scripts designed to bootstrap the project 
+on EC2 Instances.
 
-Compile raytracer with make
-
-Compile WebServer with:
-
-javac WebServer.java -cp ./raytracer-master/src/
-
-Run Webserver with:
-
-java -cp ./raytracer-master/src:. WebServer
-
-Examples of valid requests:
-
-http://localhost:8000/r.html?f=test05.txt&sc=400&sr=300&wc=400&wr=300&coff=0&roff=0
-
-http://localhost:8000/test
-
-## Instrument code with BIT
-1. Add BIT tool path to classpath:
-`export CLASSPATH="<path-to-project>/WebServer/BIT:<path-to-project>/WebServer/BIT/samples:./"`
-2. Make sure you are running java 7. `java -version`
-3. Compile instrumentation tools in samples folder. `javac *.java`
-4. Compile WebServer with instrumentation tool: `java Icount <path-to-WebServer> <path-to-output-folder>`
-5. Run instrumented WebServer class: `java -cp <project-path>/WebServer/BIT/samples:<project-path>/WebServer/raytracer-master/src:. WebServer`
+There is also a ./Client folder that contains code used to test the project during development.
